@@ -1,0 +1,8 @@
+interface:
+  display_name: "Review Ultra"
+  short_description: "Whole-codebase review with stronger verification"
+  brand_color: "#2563EB"
+  default_prompt: "Use $review-ultra to review the whole codebase."
+
+policy:
+  allow_implicit_invocation: true

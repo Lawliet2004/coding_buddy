@@ -45,17 +45,17 @@ Install user-global files where the target supports them:
 npx tokenmaxxing-ai install --scope user --target codex
 ```
 
-For Codex user-global prompts, restart Codex and use:
+For Codex, restart Codex and use the Skills picker or explicit skill names:
 
 ```text
-/prompts:simplify
-/prompts:review
-/prompts:review-lite
-/prompts:review-mid
-/prompts:review-ultra
+$simplify
+$review
+$review-lite
+$review-mid
+$review-ultra
 ```
 
-Project-local Codex skills appear through `/skills` or `$simplify` / `$review`. The lite, mid, and ultra variants are prompt entries because Codex does not show prompt arguments as separate nested menu items.
+Plain `/simplify` and `/review ultra` are still supported as natural-language intents through the installed instructions, but Codex does not expose custom project commands as first-class top-level slash commands. The visible Codex-native surface is Skills.
 
 ## Commands
 
@@ -110,7 +110,7 @@ Different AI tools support custom commands differently. This package uses native
 
 | Target | Installed files |
 | --- | --- |
-| Codex | `.agents/skills/simplify`, `.agents/skills/review`, optional user prompts under `~/.codex/prompts` with `--scope user` |
+| Codex | `.agents/skills/simplify`, `.agents/skills/review`, `.agents/skills/review-lite`, `.agents/skills/review-mid`, `.agents/skills/review-ultra` |
 | Claude Code | `.claude/skills/simplify`, `.claude/skills/review` |
 | Cursor | `.cursor/rules/tokenmaxxing-ai.mdc` plus `AGENTS.md` compatibility instructions |
 | GitHub Copilot | `.github/copilot-instructions.md`, `.github/instructions/tokenmaxxing-ai.instructions.md`, `AGENTS.md` |

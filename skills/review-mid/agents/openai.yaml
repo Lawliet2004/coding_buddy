@@ -1,0 +1,8 @@
+interface:
+  display_name: "Review Mid"
+  short_description: "Deeper review for risk and maintainability"
+  brand_color: "#2563EB"
+  default_prompt: "Use $review-mid to run a deeper approval-first review."
+
+policy:
+  allow_implicit_invocation: true

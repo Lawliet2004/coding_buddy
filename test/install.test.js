@@ -28,6 +28,9 @@ test('project install writes all target adapters', async () => {
 
   assert(!result.some((item) => item.action === 'conflict'));
   await assertContains(path.join(root, '.claude/skills/simplify/SKILL.md'), 'Proceed with these edits?');
+  await assertContains(path.join(root, '.agents/skills/review-lite/SKILL.md'), 'Run this as /review lite.');
+  await assertContains(path.join(root, '.agents/skills/review-mid/SKILL.md'), 'Run this as /review mid.');
+  await assertContains(path.join(root, '.agents/skills/review-ultra/SKILL.md'), 'Run this as /review ultra.');
   await assertContains(path.join(root, '.opencode/commands/review.md'), 'lite/light, mid/medium, ultra/full');
   await assertContains(path.join(root, '.kiro/steering/tokenmaxxing-ai.md'), 'inclusion: auto');
   await assertContains(path.join(root, '.github/instructions/tokenmaxxing-ai.instructions.md'), '/review ultra');
@@ -81,11 +84,11 @@ test('user-scope codex install writes to the supplied home directory', async () 
     force: false
   });
 
-  await assertContains(path.join(home, '.codex/prompts/review.md'), 'argument-hint: [lite|mid|ultra] [scope]');
-  await assertContains(path.join(home, '.codex/prompts/review-lite.md'), '/review lite');
-  await assertContains(path.join(home, '.codex/prompts/review-mid.md'), '/review mid');
-  await assertContains(path.join(home, '.codex/prompts/review-ultra.md'), '/review ultra');
   await assertContains(path.join(home, '.agents/skills/simplify/SKILL.md'), 'Tokenmaxxing-AI /simplify');
+  await assertContains(path.join(home, '.agents/skills/review-lite/SKILL.md'), 'name: review-lite');
+  await assertContains(path.join(home, '.agents/skills/review-mid/SKILL.md'), 'Run this as /review mid.');
+  await assertContains(path.join(home, '.agents/skills/review-ultra/SKILL.md'), 'Run this as /review ultra.');
+  await assert.rejects(fs.stat(path.join(home, '.codex/prompts/review-ultra.md')), /ENOENT/);
 });
 
 async function makeTempProject() {

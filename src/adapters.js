@@ -2,7 +2,6 @@ import {
   agnosticAgentBlock,
   antigravityCommand,
   claudeSkill,
-  codexPrompt,
   codexSkill,
   commandCodeCommand,
   copilotInstructions,
@@ -46,21 +45,20 @@ export const targetAliases = new Map([
 
 export const adapters = {
   codex(scope) {
+    const skillFiles = [
+      file(scope === 'user' ? 'home' : 'project', '.agents/skills/simplify/SKILL.md', codexSkill('simplify')),
+      file(scope === 'user' ? 'home' : 'project', '.agents/skills/review/SKILL.md', codexSkill('review')),
+      file(scope === 'user' ? 'home' : 'project', '.agents/skills/review-lite/SKILL.md', codexSkill('review-lite')),
+      file(scope === 'user' ? 'home' : 'project', '.agents/skills/review-mid/SKILL.md', codexSkill('review-mid')),
+      file(scope === 'user' ? 'home' : 'project', '.agents/skills/review-ultra/SKILL.md', codexSkill('review-ultra'))
+    ];
+
     if (scope === 'user') {
-      return [
-        file('home', '.agents/skills/simplify/SKILL.md', codexSkill('simplify')),
-        file('home', '.agents/skills/review/SKILL.md', codexSkill('review')),
-        file('home', '.codex/prompts/simplify.md', codexPrompt('simplify')),
-        file('home', '.codex/prompts/review.md', codexPrompt('review')),
-        file('home', '.codex/prompts/review-lite.md', codexPrompt('review-lite')),
-        file('home', '.codex/prompts/review-mid.md', codexPrompt('review-mid')),
-        file('home', '.codex/prompts/review-ultra.md', codexPrompt('review-ultra'))
-      ];
+      return skillFiles;
     }
 
     return [
-      file('project', '.agents/skills/simplify/SKILL.md', codexSkill('simplify')),
-      file('project', '.agents/skills/review/SKILL.md', codexSkill('review')),
+      ...skillFiles,
       block('project', 'AGENTS.md', 'agents', agnosticAgentBlock())
     ];
   },

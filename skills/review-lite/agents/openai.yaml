@@ -1,0 +1,8 @@
+interface:
+  display_name: "Review Lite"
+  short_description: "Fast review for security, bugs, and tests"
+  brand_color: "#2563EB"
+  default_prompt: "Use $review-lite to run a fast approval-first review."
+
+policy:
+  allow_implicit_invocation: true
