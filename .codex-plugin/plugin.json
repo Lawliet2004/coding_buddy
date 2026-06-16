@@ -1,0 +1,34 @@
+{
+  "name": "tokenmaxxing-ai",
+  "version": "0.1.0",
+  "description": "Token-efficient AI coding-agent workflows for simplifying code and reviewing repositories.",
+  "author": {
+    "name": "Tokenmaxxing AI contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "agent",
+    "codex",
+    "skills",
+    "review",
+    "simplify"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Tokenmaxxing AI",
+    "shortDescription": "Simplify and review code with approval-first workflows.",
+    "longDescription": "Tokenmaxxing AI provides portable coding-agent workflows for finding over-engineered code, reviewing codebases with lite/mid/ultra effort, asking for approval before edits, and verifying changes after implementation.",
+    "developerName": "Tokenmaxxing AI contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use tokenmaxxing-ai:simplify on this module.",
+      "Use tokenmaxxing-ai:review ultra for this repo."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

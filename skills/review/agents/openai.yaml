@@ -1,0 +1,8 @@
+interface:
+  display_name: "Review"
+  short_description: "Review code with lite, mid, or ultra effort"
+  brand_color: "#2563EB"
+  default_prompt: "Use $review ultra to review this repository and ask before edits."
+
+policy:
+  allow_implicit_invocation: true

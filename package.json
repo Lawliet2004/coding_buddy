@@ -1,0 +1,39 @@
+{
+  "name": "tokenmaxxing-ai",
+  "version": "0.1.0",
+  "description": "Portable AI coding-agent commands for simplifying over-engineered code and reviewing repositories with token-efficient workflows.",
+  "type": "module",
+  "bin": {
+    "tokenmaxxing-ai": "./bin/tokenmaxxing-ai.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    ".codex-plugin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check bin/tokenmaxxing-ai.js && node --check src/cli.js && node --check src/install.js && node --check src/adapters.js && node --check src/templates.js"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "codex",
+    "claude-code",
+    "cursor",
+    "copilot",
+    "opencode",
+    "kiro",
+    "slash-commands",
+    "code-review",
+    "refactoring"
+  ],
+  "author": "Tokenmaxxing AI contributors",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}
