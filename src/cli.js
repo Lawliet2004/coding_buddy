@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline/promises';
+import os from 'node:os';
 import { stdin as processStdin, stdout as processStdout } from 'node:process';
-import { install, listTargets, normalizeTargets } from './install.js';
+import { install, listTargets, normalizeTargets, verifyInstall } from './install.js';
 
 const HELP = `tokenmaxxing-ai
 
@@ -13,13 +14,18 @@ Options:
   --target, -t <name>      Adapter to install. Repeat or comma-separate. Default: all.
   --dir <path>            Project directory to install into. Default: current directory.
   --scope <project|user>  Install project-local files or user-global files. Default: project.
+                          With --scope user, "all" expands only to user-supported targets:
+                          codex, claude-code, github-copilot, opencode, antigravity, kiro.
+                          cursor and commandcode require --scope project.
   --yes, -y               Apply without interactive confirmation.
   --force                 Overwrite existing non-generated command files.
   --dry-run               Print the planned writes without changing files.
+  --verify                Verify installed files after writing.
 
 Examples:
   npx tokenmaxxing-ai install
   npx tokenmaxxing-ai install --target claude-code --target opencode
+  npx tokenmaxxing-ai install --scope user
   npx tokenmaxxing-ai install --scope user --target codex
 `;
 
@@ -48,7 +54,7 @@ export async function runCli(argv, io = {}) {
   }
 
   const options = parseInstallArgs(rest, cwd, env);
-  const targets = normalizeTargets(options.targets);
+  const targets = normalizeTargets(options.targets, options.scope);
   const preview = await install({ ...options, targets, dryRun: true });
 
   stdout.write(formatPlan(preview));
@@ -72,18 +78,26 @@ export async function runCli(argv, io = {}) {
 
   const result = await install({ ...options, targets, dryRun: false });
   stdout.write(formatResult(result));
+
+  if (options.verify) {
+    const verification = await verifyInstall({ ...options, targets });
+    stdout.write(formatVerification(verification));
+    if (verification.some((item) => item.action !== 'verified')) return 1;
+  }
+
   return result.some((item) => item.action === 'conflict') ? 1 : 0;
 }
 
 function parseInstallArgs(args, cwd, env) {
   const options = {
     projectRoot: cwd,
-    homeDir: env.HOME || env.USERPROFILE || cwd,
+    homeDir: env.TOKENMAXXING_AI_HOME || os.homedir() || env.HOME || env.USERPROFILE || cwd,
     targets: ['all'],
     scope: 'project',
     yes: false,
     force: false,
-    dryRun: false
+    dryRun: false,
+    verify: false
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -106,6 +120,8 @@ function parseInstallArgs(args, cwd, env) {
       options.force = true;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
+    } else if (arg === '--verify') {
+      options.verify = true;
     } else {
       throw new Error(`Unknown option: ${arg}`);
     }
@@ -160,6 +176,17 @@ function formatResult(items) {
   const lines = ['Install result:'];
   for (const item of items) {
     lines.push(`  ${item.action.padEnd(9)} ${item.path}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function formatVerification(items) {
+  const failed = items.filter((item) => item.action !== 'verified');
+  if (!failed.length) return 'Verification passed.\n';
+
+  const lines = ['Verification failed:'];
+  for (const item of failed) {
+    lines.push(`  ${item.action.padEnd(9)} ${item.path} ${item.message ?? ''}`.trimEnd());
   }
   return `${lines.join('\n')}\n`;
 }

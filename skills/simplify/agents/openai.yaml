@@ -1,8 +1,8 @@
 interface:
   display_name: "Simplify"
-  short_description: "Reduce over-engineered code safely"
+  short_description: "Reduce over-engineered code safely with adaptive project memory"
   brand_color: "#2563EB"
-  default_prompt: "Use $simplify to simplify this module after presenting a plan."
+  default_prompt: "Use $simplify to simplify this module after presenting a plan. Update .tokenmaxxing.md when done."
 
 policy:
   allow_implicit_invocation: true

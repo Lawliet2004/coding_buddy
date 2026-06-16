@@ -3,18 +3,23 @@ import path from 'node:path';
 import { adapters, targetAliases, targetNames } from './adapters.js';
 import { GENERATED_MARKER } from './constants.js';
 
+// Targets that support --scope user. Cursor and commandcode write only project files.
+export const USER_TARGETS = ['codex', 'claude-code', 'github-copilot', 'opencode', 'antigravity', 'kiro'];
+
 export function listTargets() {
   return [...targetNames];
 }
 
-export function normalizeTargets(rawTargets = ['all']) {
+export function normalizeTargets(rawTargets = ['all'], scope = 'project') {
   const requested = rawTargets.flatMap((target) => String(target).split(',')).map((target) => target.trim()).filter(Boolean);
   const normalized = new Set();
 
   for (const target of requested.length ? requested : ['all']) {
     const key = target.toLowerCase();
     if (key === 'all') {
-      for (const name of targetNames) normalized.add(name);
+      // For user scope, expand only to supported user targets.
+      const allowedNames = scope === 'user' ? USER_TARGETS : targetNames;
+      for (const name of allowedNames) normalized.add(name);
       continue;
     }
 
@@ -32,21 +37,75 @@ export async function install(options) {
   const projectRoot = path.resolve(options.projectRoot);
   const homeDir = path.resolve(options.homeDir);
   const files = buildInstallFiles(options.targets, options.scope);
+
+  // Build the full plan first (atomic: inspect all files before writing any).
+  const plan = [];
+  for (const file of files) {
+    const baseDir = file.root === 'home' ? homeDir : projectRoot;
+    const absolutePath = safeResolve(baseDir, file.path);
+    const next = await planFile(absolutePath, file, options.force);
+    plan.push({
+      action: next.action,
+      write: next.write,
+      content: next.content,
+      absolutePath,
+      relativePath: path.relative(projectRoot, absolutePath) || '.'
+    });
+  }
+
+  // If any file is a conflict and --force is not set, return the plan without writing.
+  const hasConflict = plan.some((p) => p.action === 'conflict');
+  if (hasConflict && !options.force) {
+    return plan.map((p) => ({ action: p.action, path: p.relativePath }));
+  }
+
+  // Write phase.
+  const results = [];
+  for (const p of plan) {
+    if (!options.dryRun && p.write) {
+      await fs.mkdir(path.dirname(p.absolutePath), { recursive: true });
+      await fs.writeFile(p.absolutePath, p.content, 'utf8');
+    }
+    results.push({ action: p.action, path: p.relativePath });
+  }
+
+  return results;
+}
+
+export async function verifyInstall(options) {
+  const projectRoot = path.resolve(options.projectRoot);
+  const homeDir = path.resolve(options.homeDir);
+  const files = buildInstallFiles(options.targets, options.scope);
   const results = [];
 
   for (const file of files) {
     const baseDir = file.root === 'home' ? homeDir : projectRoot;
     const absolutePath = safeResolve(baseDir, file.path);
-    const next = await planFile(absolutePath, file, options.force);
+    const existing = await readOptional(absolutePath);
+    const relativePath = path.relative(projectRoot, absolutePath) || '.';
 
-    if (!options.dryRun && next.write) {
-      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-      await fs.writeFile(absolutePath, next.content, 'utf8');
+    if (existing === null) {
+      results.push({
+        action: 'missing',
+        path: relativePath,
+        message: 'Expected generated file does not exist.'
+      });
+      continue;
+    }
+
+    const expected = materialize(file, existing);
+    if (existing !== expected) {
+      results.push({
+        action: 'mismatch',
+        path: relativePath,
+        message: 'Installed file differs from generated content.'
+      });
+      continue;
     }
 
     results.push({
-      action: next.action,
-      path: path.relative(projectRoot, absolutePath) || '.'
+      action: 'verified',
+      path: relativePath
     });
   }
 

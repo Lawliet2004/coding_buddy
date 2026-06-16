@@ -12,13 +12,15 @@
     "codex",
     "skills",
     "review",
-    "simplify"
+    "simplify",
+    "commandcode",
+    "antigravity"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Tokenmaxxing AI",
-    "shortDescription": "Simplify and review code with approval-first workflows.",
-    "longDescription": "Tokenmaxxing AI provides portable coding-agent workflows for finding over-engineered code, reviewing codebases with lite/mid/ultra effort, asking for approval before edits, and verifying changes after implementation.",
+    "shortDescription": "Simplify and review code with approval-first workflows and adaptive project memory.",
+    "longDescription": "Tokenmaxxing AI provides portable coding-agent workflows for finding over-engineered code, reviewing codebases with lite/mid/ultra effort, asking for approval before edits, and verifying changes after implementation. Commands read and update .tokenmaxxing.md — a project-local adaptive memory file that records run counts, verification commands, recurring risks, false positives, and instruction adjustments so repeated runs improve over time.",
     "developerName": "Tokenmaxxing AI contributors",
     "category": "Productivity",
     "capabilities": [
@@ -26,8 +28,8 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Use tokenmaxxing-ai:simplify on this module.",
-      "Use tokenmaxxing-ai:review ultra for this repo."
+      "Use tokenmaxxing-ai:simplify on this module and update .tokenmaxxing.md when done.",
+      "Use tokenmaxxing-ai:review ultra for this repo and update .tokenmaxxing.md."
     ],
     "brandColor": "#2563EB"
   }

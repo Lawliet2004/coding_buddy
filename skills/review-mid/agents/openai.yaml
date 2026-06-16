@@ -1,8 +1,8 @@
 interface:
   display_name: "Review Mid"
-  short_description: "Deeper review for risk and maintainability"
+  short_description: "Deeper review with adaptive project memory"
   brand_color: "#2563EB"
-  default_prompt: "Use $review-mid to run a deeper approval-first review."
+  default_prompt: "Use $review-mid to run a deeper approval-first review. Update .tokenmaxxing.md when done."
 
 policy:
   allow_implicit_invocation: true
