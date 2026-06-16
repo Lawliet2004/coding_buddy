@@ -45,6 +45,18 @@ Install user-global files where the target supports them:
 npx tokenmaxxing-ai install --scope user --target codex
 ```
 
+For Codex user-global prompts, restart Codex and use:
+
+```text
+/prompts:simplify
+/prompts:review
+/prompts:review-lite
+/prompts:review-mid
+/prompts:review-ultra
+```
+
+Project-local Codex skills appear through `/skills` or `$simplify` / `$review`. The lite, mid, and ultra variants are prompt entries because Codex does not show prompt arguments as separate nested menu items.
+
 ## Commands
 
 ### `/simplify [scope]`

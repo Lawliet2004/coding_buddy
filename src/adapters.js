@@ -51,7 +51,10 @@ export const adapters = {
         file('home', '.agents/skills/simplify/SKILL.md', codexSkill('simplify')),
         file('home', '.agents/skills/review/SKILL.md', codexSkill('review')),
         file('home', '.codex/prompts/simplify.md', codexPrompt('simplify')),
-        file('home', '.codex/prompts/review.md', codexPrompt('review'))
+        file('home', '.codex/prompts/review.md', codexPrompt('review')),
+        file('home', '.codex/prompts/review-lite.md', codexPrompt('review-lite')),
+        file('home', '.codex/prompts/review-mid.md', codexPrompt('review-mid')),
+        file('home', '.codex/prompts/review-ultra.md', codexPrompt('review-ultra'))
       ];
     }
 

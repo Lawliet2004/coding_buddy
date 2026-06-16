@@ -122,11 +122,15 @@ ${body}`;
 }
 
 export function codexPrompt(kind) {
+  const reviewMode = reviewPromptMode(kind);
   const description = kind === 'simplify'
     ? 'Plan, approve, edit, and verify simplification work'
+    : reviewMode
+    ? `Review with ${reviewMode} effort mode`
     : 'Review with lite, mid, and ultra effort modes';
-  const hint = kind === 'simplify' ? '[scope]' : '[lite|mid|ultra] [scope]';
+  const hint = kind === 'simplify' ? '[scope]' : reviewMode ? '[scope]' : '[lite|mid|ultra] [scope]';
   const body = kind === 'simplify' ? simplifyInstructions() : reviewInstructions();
+  const modePrefix = reviewMode ? `\nRun this as /review ${reviewMode}. Treat all user arguments as scope or focus.\n` : '';
 
   return `---
 description: ${description}
@@ -134,9 +138,17 @@ argument-hint: ${hint}
 ---
 
 ${body}
+${modePrefix}
 
 User arguments: $ARGUMENTS
 `;
+}
+
+function reviewPromptMode(kind) {
+  if (kind === 'review-lite') return 'lite';
+  if (kind === 'review-mid') return 'mid';
+  if (kind === 'review-ultra') return 'ultra';
+  return null;
 }
 
 export function claudeSkill(kind) {

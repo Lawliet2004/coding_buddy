@@ -82,6 +82,9 @@ test('user-scope codex install writes to the supplied home directory', async () 
   });
 
   await assertContains(path.join(home, '.codex/prompts/review.md'), 'argument-hint: [lite|mid|ultra] [scope]');
+  await assertContains(path.join(home, '.codex/prompts/review-lite.md'), '/review lite');
+  await assertContains(path.join(home, '.codex/prompts/review-mid.md'), '/review mid');
+  await assertContains(path.join(home, '.codex/prompts/review-ultra.md'), '/review ultra');
   await assertContains(path.join(home, '.agents/skills/simplify/SKILL.md'), 'Tokenmaxxing-AI /simplify');
 });
 
