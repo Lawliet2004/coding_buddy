@@ -1,7 +1,8 @@
 import { createInterface } from 'node:readline/promises';
 import os from 'node:os';
+import path from 'node:path';
 import { stdin as processStdin, stdout as processStdout } from 'node:process';
-import { install, listTargets, normalizeTargets, verifyInstall } from './install.js';
+import { install, listTargets, normalizeTargets, splitList, verifyInstall } from './install.js';
 
 const HELP = `tokenmaxxing-ai
 
@@ -30,7 +31,7 @@ Examples:
 `;
 
 export async function runCli(argv, io = {}) {
-  const cwd = io.cwd ?? process.cwd();
+  const cwd = path.resolve(io.cwd ?? process.cwd());
   const env = io.env ?? process.env;
   const stdout = io.stdout ?? process.stdout;
   const stderr = io.stderr ?? process.stderr;
@@ -57,9 +58,9 @@ export async function runCli(argv, io = {}) {
   const targets = normalizeTargets(options.targets, options.scope);
   const preview = await install({ ...options, targets, dryRun: true });
 
-  stdout.write(formatPlan(preview));
+  stdout.write(formatList('Install plan:', preview));
 
-  if (preview.every((item) => item.action === 'unchanged' || item.action === 'skipped')) {
+  if (preview.every((item) => item.action === 'unchanged')) {
     stdout.write('Nothing to change.\n');
     return 0;
   }
@@ -77,7 +78,7 @@ export async function runCli(argv, io = {}) {
   }
 
   const result = await install({ ...options, targets, dryRun: false });
-  stdout.write(formatResult(result));
+  stdout.write(formatList('Install result:', result));
 
   if (options.verify) {
     const verification = await verifyInstall({ ...options, targets });
@@ -91,7 +92,10 @@ export async function runCli(argv, io = {}) {
 function parseInstallArgs(args, cwd, env) {
   const options = {
     projectRoot: cwd,
-    homeDir: env.TOKENMAXXING_AI_HOME || os.homedir() || env.HOME || env.USERPROFILE || cwd,
+    homeDir: resolveCliPath(
+      env.TOKENMAXXING_AI_HOME || env.HOME || env.USERPROFILE || os.homedir() || cwd,
+      cwd
+    ),
     targets: ['all'],
     scope: 'project',
     yes: false,
@@ -107,9 +111,9 @@ function parseInstallArgs(args, cwd, env) {
     } else if (arg.startsWith('--target=')) {
       options.targets = addTargets(options.targets, splitList(arg.slice('--target='.length)));
     } else if (arg === '--dir') {
-      options.projectRoot = readValue(args, ++index, arg);
+      options.projectRoot = resolveCliPath(readValue(args, ++index, arg), cwd);
     } else if (arg.startsWith('--dir=')) {
-      options.projectRoot = arg.slice('--dir='.length);
+      options.projectRoot = resolveCliPath(arg.slice('--dir='.length), cwd);
     } else if (arg === '--scope') {
       options.scope = readValue(args, ++index, arg);
     } else if (arg.startsWith('--scope=')) {
@@ -142,13 +146,15 @@ function readValue(args, index, flag) {
   return value;
 }
 
-function splitList(value) {
-  return value.split(',').map((item) => item.trim()).filter(Boolean);
-}
-
-function addTargets(current, next) {
+export function addTargets(current, next) {
   const base = current.length === 1 && current[0] === 'all' ? [] : current;
   return [...base, ...next];
+}
+
+export { splitList };
+
+function resolveCliPath(value, cwd) {
+  return path.isAbsolute(value) ? value : path.resolve(cwd, value);
 }
 
 async function askApproval(stdin, stdout) {
@@ -164,16 +170,8 @@ async function askApproval(stdin, stdout) {
   }
 }
 
-function formatPlan(items) {
-  const lines = ['Install plan:'];
-  for (const item of items) {
-    lines.push(`  ${item.action.padEnd(9)} ${item.path}`);
-  }
-  return `${lines.join('\n')}\n`;
-}
-
-function formatResult(items) {
-  const lines = ['Install result:'];
+function formatList(title, items) {
+  const lines = [title];
   for (const item of items) {
     lines.push(`  ${item.action.padEnd(9)} ${item.path}`);
   }

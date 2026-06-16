@@ -1,7 +1,7 @@
 {
   "name": "tokenmaxxing-ai",
   "version": "0.1.0",
-  "description": "Portable AI coding-agent commands for simplifying over-engineered code and reviewing repositories with token-efficient workflows.",
+  "description": "Portable approval-first AI coding-agent workflows for /simplify and /review across Codex, Claude Code, Cursor, Copilot, and more.",
   "type": "module",
   "bin": {
     "tokenmaxxing-ai": "./bin/tokenmaxxing-ai.js"
@@ -10,7 +10,12 @@
     "bin",
     "src",
     "skills",
+    "docs",
+    "examples",
     ".codex-plugin",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "ROADMAP.md",
     "README.md",
     "LICENSE"
   ],
@@ -21,20 +26,32 @@
   "keywords": [
     "ai",
     "agent",
+    "ai-coding-agent",
     "codex",
     "claude-code",
     "cursor",
     "copilot",
+    "github-copilot",
     "opencode",
     "commandcode",
     "antigravity",
     "kiro",
     "slash-commands",
     "code-review",
-    "refactoring"
+    "refactoring",
+    "open-source",
+    "developer-tools"
   ],
   "author": "Tokenmaxxing AI contributors",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lawliet2004/coding_buddy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Lawliet2004/coding_buddy/issues"
+  },
+  "homepage": "https://github.com/Lawliet2004/coding_buddy#readme",
   "engines": {
     "node": ">=20"
   }

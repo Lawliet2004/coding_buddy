@@ -11,7 +11,7 @@ export function listTargets() {
 }
 
 export function normalizeTargets(rawTargets = ['all'], scope = 'project') {
-  const requested = rawTargets.flatMap((target) => String(target).split(',')).map((target) => target.trim()).filter(Boolean);
+  const requested = rawTargets.flatMap(splitList).filter(Boolean);
   const normalized = new Set();
 
   for (const target of requested.length ? requested : ['all']) {
@@ -33,6 +33,10 @@ export function normalizeTargets(rawTargets = ['all'], scope = 'project') {
   return [...normalized];
 }
 
+export function splitList(value) {
+  return String(value).split(',').map((item) => item.trim()).filter(Boolean);
+}
+
 export async function install(options) {
   const projectRoot = path.resolve(options.projectRoot);
   const homeDir = path.resolve(options.homeDir);
@@ -49,7 +53,7 @@ export async function install(options) {
       write: next.write,
       content: next.content,
       absolutePath,
-      relativePath: path.relative(projectRoot, absolutePath) || '.'
+      relativePath: path.relative(baseDir, absolutePath) || path.basename(absolutePath)
     });
   }
 
@@ -82,7 +86,7 @@ export async function verifyInstall(options) {
     const baseDir = file.root === 'home' ? homeDir : projectRoot;
     const absolutePath = safeResolve(baseDir, file.path);
     const existing = await readOptional(absolutePath);
-    const relativePath = path.relative(projectRoot, absolutePath) || '.';
+    const relativePath = path.relative(baseDir, absolutePath) || path.basename(absolutePath);
 
     if (existing === null) {
       results.push({
@@ -149,7 +153,7 @@ async function planFile(absolutePath, file, force) {
   return { action: 'conflict', write: false, content: existing };
 }
 
-function materialize(file, existing) {
+export function materialize(file, existing) {
   if (file.merge !== 'block') {
     return ensureTrailingNewline(file.content);
   }
@@ -179,7 +183,7 @@ async function readOptional(filePath) {
   }
 }
 
-function safeResolve(baseDir, relativePath) {
+export function safeResolve(baseDir, relativePath) {
   if (path.isAbsolute(relativePath)) {
     throw new Error(`Adapter path must be relative: ${relativePath}`);
   }
@@ -196,6 +200,6 @@ function ensureTrailingNewline(value) {
   return value.endsWith('\n') ? value : `${value}\n`;
 }
 
-function escapeRegExp(value) {
+export function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

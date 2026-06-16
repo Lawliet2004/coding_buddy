@@ -4,7 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { install, listTargets, normalizeTargets, verifyInstall, USER_TARGETS } from '../src/install.js';
+import { install, listTargets, materialize, normalizeTargets, verifyInstall, USER_TARGETS, escapeRegExp } from '../src/install.js';
+import { addTargets } from '../src/cli.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -344,4 +345,174 @@ test('openai.yaml files mention adaptive project memory', async () => {
       `${skill}/agents/openai.yaml should mention adaptive project memory`
     );
   }
+});
+
+// materialize: non-block branch
+test('materialize returns trailing-newline content for non-block files', () => {
+  const result = materialize({ merge: undefined, content: 'hello' }, null);
+  assert.equal(result, 'hello\n');
+});
+
+// materialize: block branch with no existing file
+test('materialize creates a block when no existing file is present', () => {
+  const result = materialize({ merge: 'block', blockId: 'test', content: 'hello' }, null);
+  assert.match(result, /<!-- tokenmaxxing-ai:test:start -->/);
+  assert.match(result, /<!-- tokenmaxxing-ai:test:end -->/);
+  assert.match(result, /hello/);
+});
+
+// materialize: block branch replacing an existing block
+test('materialize replaces an existing block in place', () => {
+  const existing = [
+    'before',
+    '',
+    '<!-- tokenmaxxing-ai:test:start -->',
+    'old content',
+    '<!-- tokenmaxxing-ai:test:end -->',
+    '',
+    'after'
+  ].join('\n');
+  const result = materialize({ merge: 'block', blockId: 'test', content: 'new content' }, existing);
+  assert.match(result, /before/);
+  assert.match(result, /after/);
+  assert.match(result, /new content/);
+  assert.doesNotMatch(result, /old content/);
+});
+
+// materialize: block branch appending when existing has no markers
+test('materialize appends a block when existing has no matching markers', () => {
+  const existing = 'user-written content\n';
+  const result = materialize({ merge: 'block', blockId: 'test', content: 'appended' }, existing);
+  const userIdx = result.indexOf('user-written content');
+  const blockIdx = result.indexOf('<!-- tokenmaxxing-ai:test:start -->');
+  assert(userIdx >= 0, 'user content is preserved');
+  assert(blockIdx >= 0, 'block is added');
+  assert(userIdx < blockIdx, 'user content stays before the appended block');
+  assert.match(result, /appended/);
+});
+
+// materialize: blockId with regex special characters is escaped, not interpreted
+test('materialize escapes regex metacharacters in blockId', () => {
+  const result = materialize({ merge: 'block', blockId: 'a.b+c', content: 'x' }, null);
+  assert.match(result, /<!-- tokenmaxxing-ai:a\.b\+c:start -->/);
+  assert.match(result, /<!-- tokenmaxxing-ai:a\.b\+c:end -->/);
+});
+
+// escapeRegExp: covers the characters that would break the materialize regex
+test('escapeRegExp escapes regex metacharacters', () => {
+  for (const [input, expected] of [
+    ['a.b', 'a\\.b'],
+    ['a*b', 'a\\*b'],
+    ['a+b', 'a\\+b'],
+    ['a?b', 'a\\?b'],
+    ['a^b', 'a\\^b'],
+    ['a$b', 'a\\$b'],
+    ['a{b', 'a\\{b'],
+    ['a(b', 'a\\(b'],
+    ['a)b', 'a\\)b'],
+    ['a|b', 'a\\|b'],
+    ['a[b', 'a\\[b'],
+    ['a]b', 'a\\]b'],
+    ['a\\b', 'a\\\\b']
+  ]) {
+    assert.equal(escapeRegExp(input), expected, `escapeRegExp(${JSON.stringify(input)})`);
+  }
+});
+
+test('escapeRegExp leaves plain characters alone', () => {
+  assert.equal(escapeRegExp('agents'), 'agents');
+  assert.equal(escapeRegExp('simplify-2026'), 'simplify-2026');
+});
+
+// verifyInstall: missing-files branch
+test('verifyInstall reports missing files when nothing was installed', async () => {
+  const { root, home } = await makeTempProject();
+
+  const result = await verifyInstall({
+    projectRoot: root,
+    homeDir: home,
+    targets: normalizeTargets(['opencode']),
+    scope: 'project'
+  });
+
+  assert(result.length > 0);
+  assert(result.every((item) => item.action === 'missing'));
+});
+
+// verifyInstall: block-merge file drift
+test('verifyInstall detects drift inside a block-merge file', async () => {
+  const { root, home } = await makeTempProject();
+
+  await install({
+    projectRoot: root,
+    homeDir: home,
+    targets: normalizeTargets(['codex']),
+    scope: 'project',
+    dryRun: false,
+    force: false
+  });
+
+  const agentsPath = path.join(root, 'AGENTS.md');
+  const original = await fs.readFile(agentsPath, 'utf8');
+  const tampered = original.replace('tokenmaxxing-ai', 'something-else');
+  await fs.writeFile(agentsPath, tampered, 'utf8');
+
+  const result = await verifyInstall({
+    projectRoot: root,
+    homeDir: home,
+    targets: normalizeTargets(['codex']),
+    scope: 'project'
+  });
+
+  const agentsResult = result.find((item) => item.path.split(path.sep).join('/').endsWith('AGENTS.md'));
+  assert(agentsResult, 'AGENTS.md should be in verify result');
+  assert.equal(agentsResult.action, 'mismatch');
+});
+
+// addTargets: semantics
+test('addTargets replaces a single "all" with the new list', () => {
+  assert.deepEqual(addTargets(['all'], ['claude-code']), ['claude-code']);
+  assert.deepEqual(addTargets(['all'], ['all']), ['all']);
+  assert.deepEqual(addTargets(['all'], ['a', 'b']), ['a', 'b']);
+});
+
+test('addTargets appends to a non-all list', () => {
+  assert.deepEqual(addTargets(['codex'], ['claude-code']), ['codex', 'claude-code']);
+  assert.deepEqual(addTargets(['codex', 'opencode'], ['kiro']), ['codex', 'opencode', 'kiro']);
+});
+
+test('addTargets treats a multi-element list containing "all" as already-expanded', () => {
+  // Only the single-element ['all'] form is collapsed; multi-element lists are kept verbatim.
+  assert.deepEqual(addTargets(['codex', 'all'], ['claude-code']), ['codex', 'all', 'claude-code']);
+});
+
+// normalizeTargets: unknown target throws
+test('normalizeTargets throws on unknown target', () => {
+  assert.throws(
+    () => normalizeTargets(['nonexistent-target']),
+    /Unknown target/
+  );
+});
+
+// path display: home-rooted files are reported relative to the home dir, not the project
+test('install plan reports home-rooted files relative to the home directory', async () => {
+  const { root, home } = await makeTempProject();
+
+  const result = await install({
+    projectRoot: root,
+    homeDir: home,
+    targets: normalizeTargets(['codex'], 'user'),
+    scope: 'user',
+    dryRun: true,
+    force: false
+  });
+
+  // No path should contain '..' (which would indicate project-relative path-joining against home)
+  for (const item of result) {
+    assert(!item.path.includes('..'), `path ${item.path} should not escape the home dir`);
+  }
+  // At least one home-rooted file is shown as .agents/...
+  const relative = result.map((item) => item.path.split(path.sep).join('/'));
+  assert(relative.some((p) => p.startsWith('.agents/')),
+    'expected at least one home-rooted file to be shown as a home-relative path');
 });

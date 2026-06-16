@@ -88,17 +88,23 @@ export const adapters = {
       file(root, `${prefix}/simplify/SKILL.md`, claudeSkill('simplify')),
       file(root, `${prefix}/review/SKILL.md`, claudeSkill('review')),
       file(root, `${prefix}/review-lite/SKILL.md`, claudeSkill('review-lite')),
-      file(root, `${prefix}/review-lite/references/security_checklist.md`, referenceContent('review-lite', 'security_checklist.md')),
-      file(root, `${prefix}/review-lite/references/bug_patterns.md`, referenceContent('review-lite', 'bug_patterns.md')),
+      ...reviewReferenceFiles(root, `${prefix}/review-lite`, 'review-lite', [
+        'security_checklist.md',
+        'bug_patterns.md'
+      ]),
       file(root, `${prefix}/review-mid/SKILL.md`, claudeSkill('review-mid')),
-      file(root, `${prefix}/review-mid/references/security_checklist.md`, referenceContent('review-mid', 'security_checklist.md')),
-      file(root, `${prefix}/review-mid/references/bug_patterns.md`, referenceContent('review-mid', 'bug_patterns.md')),
-      file(root, `${prefix}/review-mid/references/maintainability_checklist.md`, referenceContent('review-mid', 'maintainability_checklist.md')),
+      ...reviewReferenceFiles(root, `${prefix}/review-mid`, 'review-mid', [
+        'security_checklist.md',
+        'bug_patterns.md',
+        'maintainability_checklist.md'
+      ]),
       file(root, `${prefix}/review-ultra/SKILL.md`, claudeSkill('review-ultra')),
-      file(root, `${prefix}/review-ultra/references/security_checklist.md`, referenceContent('review-ultra', 'security_checklist.md')),
-      file(root, `${prefix}/review-ultra/references/bug_patterns.md`, referenceContent('review-ultra', 'bug_patterns.md')),
-      file(root, `${prefix}/review-ultra/references/maintainability_checklist.md`, referenceContent('review-ultra', 'maintainability_checklist.md')),
-      file(root, `${prefix}/review-ultra/references/simplification_signals.md`, referenceContent('review-ultra', 'simplification_signals.md'))
+      ...reviewReferenceFiles(root, `${prefix}/review-ultra`, 'review-ultra', [
+        'security_checklist.md',
+        'bug_patterns.md',
+        'maintainability_checklist.md',
+        'simplification_signals.md'
+      ])
     ];
   },
 
@@ -150,22 +156,28 @@ export const adapters = {
 
   antigravity(scope) {
     if (scope === 'user') {
-      // Global Antigravity skills: ~/.gemini/antigravity/skills/
+      const prefix = '.gemini/antigravity/skills';
       return [
-        file('home', '.gemini/antigravity/skills/simplify/SKILL.md', claudeSkill('simplify')),
-        file('home', '.gemini/antigravity/skills/review/SKILL.md', claudeSkill('review')),
-        file('home', '.gemini/antigravity/skills/review-lite/SKILL.md', claudeSkill('review-lite')),
-        file('home', '.gemini/antigravity/skills/review-lite/references/security_checklist.md', referenceContent('review-lite', 'security_checklist.md')),
-        file('home', '.gemini/antigravity/skills/review-lite/references/bug_patterns.md', referenceContent('review-lite', 'bug_patterns.md')),
-        file('home', '.gemini/antigravity/skills/review-mid/SKILL.md', claudeSkill('review-mid')),
-        file('home', '.gemini/antigravity/skills/review-mid/references/security_checklist.md', referenceContent('review-mid', 'security_checklist.md')),
-        file('home', '.gemini/antigravity/skills/review-mid/references/bug_patterns.md', referenceContent('review-mid', 'bug_patterns.md')),
-        file('home', '.gemini/antigravity/skills/review-mid/references/maintainability_checklist.md', referenceContent('review-mid', 'maintainability_checklist.md')),
-        file('home', '.gemini/antigravity/skills/review-ultra/SKILL.md', claudeSkill('review-ultra')),
-        file('home', '.gemini/antigravity/skills/review-ultra/references/security_checklist.md', referenceContent('review-ultra', 'security_checklist.md')),
-        file('home', '.gemini/antigravity/skills/review-ultra/references/bug_patterns.md', referenceContent('review-ultra', 'bug_patterns.md')),
-        file('home', '.gemini/antigravity/skills/review-ultra/references/maintainability_checklist.md', referenceContent('review-ultra', 'maintainability_checklist.md')),
-        file('home', '.gemini/antigravity/skills/review-ultra/references/simplification_signals.md', referenceContent('review-ultra', 'simplification_signals.md'))
+        file('home', `${prefix}/simplify/SKILL.md`, claudeSkill('simplify')),
+        file('home', `${prefix}/review/SKILL.md`, claudeSkill('review')),
+        file('home', `${prefix}/review-lite/SKILL.md`, claudeSkill('review-lite')),
+        ...reviewReferenceFiles('home', `${prefix}/review-lite`, 'review-lite', [
+          'security_checklist.md',
+          'bug_patterns.md'
+        ]),
+        file('home', `${prefix}/review-mid/SKILL.md`, claudeSkill('review-mid')),
+        ...reviewReferenceFiles('home', `${prefix}/review-mid`, 'review-mid', [
+          'security_checklist.md',
+          'bug_patterns.md',
+          'maintainability_checklist.md'
+        ]),
+        file('home', `${prefix}/review-ultra/SKILL.md`, claudeSkill('review-ultra')),
+        ...reviewReferenceFiles('home', `${prefix}/review-ultra`, 'review-ultra', [
+          'security_checklist.md',
+          'bug_patterns.md',
+          'maintainability_checklist.md',
+          'simplification_signals.md'
+        ])
       ];
     }
     return [
@@ -178,11 +190,10 @@ export const adapters = {
 
   kiro(scope) {
     const root = scope === 'user' ? 'home' : 'project';
-    const prefix = scope === 'user' ? '.kiro/steering' : '.kiro/steering';
     return [
-      file(root, `${prefix}/simplify.md`, kiroSteering('simplify')),
-      file(root, `${prefix}/review.md`, kiroSteering('review')),
-      file(root, `${prefix}/tokenmaxxing-ai.md`, kiroSteering('core'))
+      file(root, '.kiro/steering/simplify.md', kiroSteering('simplify')),
+      file(root, '.kiro/steering/review.md', kiroSteering('review')),
+      file(root, '.kiro/steering/tokenmaxxing-ai.md', kiroSteering('core'))
     ];
   }
 };

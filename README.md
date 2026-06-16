@@ -1,6 +1,10 @@
 # tokenmaxxing-ai
 
-Portable AI coding-agent commands for getting more real work out of your model tokens.
+[![CI](https://github.com/Lawliet2004/coding_buddy/actions/workflows/ci.yml/badge.svg)](https://github.com/Lawliet2004/coding_buddy/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/tokenmaxxing-ai.svg)](https://www.npmjs.com/package/tokenmaxxing-ai)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Portable approval-first AI coding-agent workflows for `/simplify` and `/review` across Codex, Claude Code, Cursor, GitHub Copilot, and more.
 
 `tokenmaxxing-ai` installs two approval-first workflows into AI coding tools:
 
@@ -10,6 +14,20 @@ Portable AI coding-agent commands for getting more real work out of your model t
 Each command can also maintain `.tokenmaxxing.md`, a project-local memory file that records run counts, verification commands, recurring risks, false positives, and project-specific instruction adjustments so repeated runs improve over time.
 
 The project is Node/npm-first and has no runtime dependencies.
+
+## Demo
+
+![tokenmaxxing-ai demo](docs/assets/tokenmaxxing-ai-demo.gif)
+
+See [screenshots and demo notes](docs/screenshots.md), [workflow examples](examples/README.md), and the [v0.1.0 release notes](docs/release/v0.1.0.md).
+
+## Package Status
+
+The npm package name is reserved in this repository as `tokenmaxxing-ai`.
+
+- npm package page: <https://www.npmjs.com/package/tokenmaxxing-ai>
+- Current registry proof: `npm view tokenmaxxing-ai version` returned `E404` on 2026-06-16, so the package has not been published yet.
+- After `npm publish`, the npm badge and `npx tokenmaxxing-ai install` command will resolve from the registry.
 
 ## Quick Start
 
@@ -75,6 +93,22 @@ $review-ultra
 
 Plain `/simplify` and `/review ultra` are still supported as natural-language intents through the installed instructions, but Codex does not expose custom project commands as first-class top-level slash commands. The visible Codex-native surface is Skills.
 
+## Repository Metadata
+
+Suggested GitHub description:
+
+```text
+Portable approval-first AI coding-agent workflows for /simplify and /review across Codex, Claude Code, Cursor, Copilot, and more.
+```
+
+Suggested GitHub topics:
+
+```text
+codex, ai-coding-agent, claude-code, cursor, copilot, open-source, developer-tools
+```
+
+The same metadata is recorded in [.github/repository.yml](.github/repository.yml) for repository-settings automation.
+
 ## Commands
 
 ### `/simplify [scope]`
@@ -124,7 +158,7 @@ Whole-codebase pass for:
 - Maintainability (full checklist).
 - Over-engineering and simplification opportunities (27-item signals list).
 
-Asks 3–5 scoping questions. Three structured passes. Full findings with severity, confidence, and evidence. Approve before fixes. Documents unresolved areas.
+Asks 3-5 scoping questions. Three structured passes. Full findings with severity, confidence, and evidence. Approve before fixes. Documents unresolved areas.
 
 ## Adaptive Project Memory
 
@@ -221,3 +255,12 @@ npm.cmd --cache .npm-cache pack --dry-run
 CI runs the same checks on Windows, macOS, and Linux across supported Node versions, plus smoke tests for dry-run, project-scope, and user-scope installs.
 
 This repository can also be consumed as a Codex plugin because it includes `.codex-plugin/plugin.json` and `skills/`.
+
+## Project Docs
+
+- [Contributing](CONTRIBUTING.md)
+- [Roadmap](ROADMAP.md)
+- [Changelog](CHANGELOG.md)
+- [Examples](examples/README.md)
+- [Screenshots and demo media](docs/screenshots.md)
+- [v0.1.0 release notes](docs/release/v0.1.0.md)
