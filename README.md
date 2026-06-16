@@ -4,7 +4,7 @@
 [![npm version](https://img.shields.io/npm/v/tokenmaxxing-ai.svg)](https://www.npmjs.com/package/tokenmaxxing-ai)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Portable approval-first AI coding-agent workflows for `/simplify` and `/review` across Codex, Claude Code, Cursor, GitHub Copilot, and more.
+Portable approval-first AI coding-agent workflows for Codex, Claude Code, Cursor, Copilot, OpenCode, and more.
 
 `tokenmaxxing-ai` installs two approval-first workflows into AI coding tools:
 
@@ -98,16 +98,17 @@ Plain `/simplify` and `/review ultra` are still supported as natural-language in
 Suggested GitHub description:
 
 ```text
-Portable approval-first AI coding-agent workflows for /simplify and /review across Codex, Claude Code, Cursor, Copilot, and more.
+Portable approval-first AI coding-agent workflows for Codex, Claude Code, Cursor, Copilot, OpenCode, and more.
 ```
 
 Suggested GitHub topics:
 
 ```text
-codex, ai-coding-agent, claude-code, cursor, copilot, open-source, developer-tools
+codex, ai-coding-agent, developer-tools, code-review, refactoring, claude-code, cursor, copilot, opencode, open-source
 ```
 
 The same metadata is recorded in [.github/repository.yml](.github/repository.yml) for repository-settings automation.
+See [GitHub launch checklist](docs/github-launch-checklist.md) for the release and roadmap issue commands.
 
 ## Commands
 
@@ -262,5 +263,6 @@ This repository can also be consumed as a Codex plugin because it includes `.cod
 - [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
 - [Examples](examples/README.md)
+- [GitHub launch checklist](docs/github-launch-checklist.md)
 - [Screenshots and demo media](docs/screenshots.md)
 - [v0.1.0 release notes](docs/release/v0.1.0.md)

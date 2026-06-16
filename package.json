@@ -1,7 +1,7 @@
 {
   "name": "tokenmaxxing-ai",
   "version": "0.1.0",
-  "description": "Portable approval-first AI coding-agent workflows for /simplify and /review across Codex, Claude Code, Cursor, Copilot, and more.",
+  "description": "Portable approval-first AI coding-agent workflows for Codex, Claude Code, Cursor, Copilot, OpenCode, and more.",
   "type": "module",
   "bin": {
     "tokenmaxxing-ai": "./bin/tokenmaxxing-ai.js"

@@ -1,12 +1,15 @@
 repository:
   name: coding_buddy
-  description: Portable approval-first AI coding-agent workflows for /simplify and /review across Codex, Claude Code, Cursor, Copilot, and more.
+  description: Portable approval-first AI coding-agent workflows for Codex, Claude Code, Cursor, Copilot, OpenCode, and more.
   homepage: https://github.com/Lawliet2004/coding_buddy#readme
   topics:
     - codex
     - ai-coding-agent
+    - developer-tools
+    - code-review
+    - refactoring
     - claude-code
     - cursor
     - copilot
+    - opencode
     - open-source
-    - developer-tools
