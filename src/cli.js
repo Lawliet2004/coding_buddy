@@ -2,12 +2,14 @@ import { createInterface } from 'node:readline/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { stdin as processStdin, stdout as processStdout } from 'node:process';
+import { runGraphq } from './graphq/index.js';
 import { install, listTargets, normalizeTargets, splitList, verifyInstall } from './install.js';
 
 const HELP = `tokenmaxxing-ai
 
 Usage:
   tokenmaxxing-ai install [options]
+  tokenmaxxing-ai graphq [graphq-options]
   tokenmaxxing-ai list-targets
   tokenmaxxing-ai help
 
@@ -28,6 +30,7 @@ Examples:
   npx tokenmaxxing-ai install --target claude-code --target opencode
   npx tokenmaxxing-ai install --scope user
   npx tokenmaxxing-ai install --scope user --target codex
+  npx tokenmaxxing-ai graphq task "fix expired JWT tokens being accepted"
 `;
 
 export async function runCli(argv, io = {}) {
@@ -47,6 +50,10 @@ export async function runCli(argv, io = {}) {
   if (command === 'list-targets') {
     stdout.write(`${listTargets().join('\n')}\n`);
     return 0;
+  }
+
+  if (command === 'graphq') {
+    return runGraphq(rest, { cwd, env, stdin, stdout, stderr });
   }
 
   if (command !== 'install') {

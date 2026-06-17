@@ -32,6 +32,7 @@ test('coreInstructions include adaptive project memory guidance', () => {
 
   assert(content.includes('.tokenmaxxing.md'));
   assert(content.includes('Adaptive Memory'));
+  assert(content.includes('/graphq'));
 });
 
 test('referenceContent returns the same content as the on-disk file', () => {

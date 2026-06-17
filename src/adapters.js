@@ -49,6 +49,7 @@ export const adapters = {
     const root = scope === 'user' ? 'home' : 'project';
     const prefix = '.agents/skills';
     const skillFiles = [
+      file(root, `${prefix}/graphq/SKILL.md`, codexSkill('graphq')),
       file(root, `${prefix}/simplify/SKILL.md`, codexSkill('simplify')),
       file(root, `${prefix}/review/SKILL.md`, codexSkill('review')),
       file(root, `${prefix}/review-lite/SKILL.md`, codexSkill('review-lite')),
@@ -85,6 +86,7 @@ export const adapters = {
     const root = scope === 'user' ? 'home' : 'project';
     const prefix = '.claude/skills';
     return [
+      file(root, `${prefix}/graphq/SKILL.md`, claudeSkill('graphq')),
       file(root, `${prefix}/simplify/SKILL.md`, claudeSkill('simplify')),
       file(root, `${prefix}/review/SKILL.md`, claudeSkill('review')),
       file(root, `${prefix}/review-lite/SKILL.md`, claudeSkill('review-lite')),
@@ -137,6 +139,7 @@ export const adapters = {
     const root = scope === 'user' ? 'home' : 'project';
     const prefix = scope === 'user' ? '.config/opencode/commands' : '.opencode/commands';
     return [
+      file(root, `${prefix}/graphq.md`, opencodeCommand('graphq')),
       file(root, `${prefix}/simplify.md`, opencodeCommand('simplify')),
       file(root, `${prefix}/review.md`, opencodeCommand('review'))
     ];
@@ -148,6 +151,7 @@ export const adapters = {
     }
 
     return [
+      file('project', '.commandcode/commands/graphq.md', commandCodeCommand('graphq')),
       file('project', '.commandcode/commands/simplify.md', commandCodeCommand('simplify')),
       file('project', '.commandcode/commands/review.md', commandCodeCommand('review')),
       block('project', 'COMMANDCODE.md', 'commandcode', agnosticAgentBlock())
@@ -158,6 +162,7 @@ export const adapters = {
     if (scope === 'user') {
       const prefix = '.gemini/antigravity/skills';
       return [
+        file('home', `${prefix}/graphq/SKILL.md`, claudeSkill('graphq')),
         file('home', `${prefix}/simplify/SKILL.md`, claudeSkill('simplify')),
         file('home', `${prefix}/review/SKILL.md`, claudeSkill('review')),
         file('home', `${prefix}/review-lite/SKILL.md`, claudeSkill('review-lite')),
@@ -181,6 +186,7 @@ export const adapters = {
       ];
     }
     return [
+      file('project', '.antigravity/commands/graphq.md', antigravityCommand('graphq')),
       file('project', '.antigravity/commands/simplify.md', antigravityCommand('simplify')),
       file('project', '.antigravity/commands/review.md', antigravityCommand('review')),
       block('project', 'GEMINI.md', 'gemini', geminiStyleBlock()),
@@ -191,6 +197,7 @@ export const adapters = {
   kiro(scope) {
     const root = scope === 'user' ? 'home' : 'project';
     return [
+      file(root, '.kiro/steering/graphq.md', kiroSteering('graphq')),
       file(root, '.kiro/steering/simplify.md', kiroSteering('simplify')),
       file(root, '.kiro/steering/review.md', kiroSteering('review')),
       file(root, '.kiro/steering/tokenmaxxing-ai.md', kiroSteering('core'))

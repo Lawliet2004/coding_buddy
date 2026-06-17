@@ -1,7 +1,7 @@
 {
   "name": "tokenmaxxing-ai",
   "version": "0.1.0",
-  "description": "Token-efficient AI coding-agent workflows for simplifying code and reviewing repositories.",
+  "description": "Token-efficient AI coding-agent workflows for repo context, simplification, and review.",
   "author": {
     "name": "Tokenmaxxing AI contributors"
   },
@@ -12,6 +12,9 @@
     "codex",
     "skills",
     "review",
+    "graphq",
+    "repo-intelligence",
+    "context-engineering",
     "simplify",
     "commandcode",
     "antigravity"
@@ -19,8 +22,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Tokenmaxxing AI",
-    "shortDescription": "Simplify and review code with approval-first workflows and adaptive project memory.",
-    "longDescription": "Tokenmaxxing AI provides portable coding-agent workflows for finding over-engineered code, reviewing codebases with lite/mid/ultra effort, asking for approval before edits, and verifying changes after implementation. Commands read and update .tokenmaxxing.md — a project-local adaptive memory file that records run counts, verification commands, recurring risks, false positives, and instruction adjustments so repeated runs improve over time.",
+    "shortDescription": "Generate repo context packs, simplify code, and review changes with approval-first workflows.",
+    "longDescription": "Tokenmaxxing AI provides portable coding-agent workflows for generating local-first GraphQ repo context packs, finding over-engineered code, reviewing codebases with lite/mid/ultra effort, asking for approval before edits, and verifying changes after implementation. GraphQ reads .tokenmaxxing.md to make context packs smarter; simplify and review can update .tokenmaxxing.md, a project-local adaptive memory file that records run counts, verification commands, recurring risks, false positives, and instruction adjustments so repeated runs improve over time.",
     "developerName": "Tokenmaxxing AI contributors",
     "category": "Productivity",
     "capabilities": [
@@ -28,6 +31,7 @@
       "Write"
     ],
     "defaultPrompt": [
+      "Use tokenmaxxing-ai:graphq to generate the smallest safe context for this task before editing.",
       "Use tokenmaxxing-ai:simplify on this module and update .tokenmaxxing.md when done.",
       "Use tokenmaxxing-ai:review ultra for this repo and update .tokenmaxxing.md."
     ],

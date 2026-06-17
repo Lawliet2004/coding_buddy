@@ -1,0 +1,8 @@
+interface:
+  display_name: "GraphQ"
+  short_description: "Local-first repo intelligence and compact context packs (zero runtime deps)"
+  brand_color: "#2563EB"
+  default_prompt: "Use $graphq to generate the smallest safe context for this task. Read .graphq/agent/context.md first and verify claims in source files."
+
+policy:
+  allow_implicit_invocation: true

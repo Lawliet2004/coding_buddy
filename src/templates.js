@@ -42,6 +42,10 @@ export function reviewInstructions() {
   return skillBody('review');
 }
 
+export function graphqInstructions() {
+  return skillBody('graphq');
+}
+
 export function liteReviewInstructions() {
   return skillBody('review-lite');
 }
@@ -75,6 +79,7 @@ Use tokens for evidence and verification, not guessing.
 - Mark uncertainty clearly. Separate observed facts from inference.
 - Preserve unrelated user changes.
 - Read \`.tokenmaxxing.md\` when present and use it as project-local adaptive memory.
+- Use /graphq to generate the smallest safe context before risky or unclear edits.
 - After /simplify or /review runs, propose a \`.tokenmaxxing.md\` update with run counts, durable project facts, verification commands, false positives, and instruction adjustments. Require approval before editing it.
 
 ## Commands
@@ -83,6 +88,7 @@ Use tokens for evidence and verification, not guessing.
 - /review lite [scope]: quick security, bug, and broken-test pass.
 - /review mid [scope]: deeper security, bug, test, and maintainability pass.
 - /review ultra [scope]: whole-codebase review and fix workflow.
+- /graphq [task]: generate local-first repo intelligence and a compact AI context pack before editing.
 
 ## Adaptive Memory
 
@@ -97,7 +103,9 @@ Use \`.tokenmaxxing.md\` to let these commands improve over repeated runs for th
 export function codexSkill(kind) {
   const body = modeBody(kind);
   const reviewMode = reviewModeForKind(kind);
-  const description = kind === 'simplify'
+  const description = kind === 'graphq'
+    ? 'Generate local-first repo intelligence and compact AI context packs. Use when the user asks for /graphq, graphq, repo understanding, impact maps, test maps, or smallest safe context before editing.'
+    : kind === 'simplify'
     ? 'Simplify over-engineered code with adaptive .tokenmaxxing.md project memory. Use when the user asks to simplify, reduce complexity, refactor for clarity, or run /simplify.'
     : reviewMode
     ? `Run /review ${reviewMode} with adaptive .tokenmaxxing.md project memory. Use when the user asks for ${reviewMode} review mode, security review, bug review, tests, or quality fixes.`
@@ -121,6 +129,10 @@ export function claudeSkill(kind) {
   let description;
 
   switch (kind) {
+    case 'graphq':
+      hint = '[task]';
+      description = 'Generate local repo intelligence and compact context packs before editing.';
+      break;
     case 'simplify':
       hint = '[scope]';
       description = 'Simplify over-engineered code with adaptive project memory after presenting a plan and asking approval.';
@@ -159,9 +171,13 @@ User arguments: $ARGUMENTS
 // ---------------------------------------------------------------------------
 
 export function opencodeCommand(kind) {
-  const body = kind === 'simplify' ? simplifyInstructions() : reviewInstructions();
+  const body = kind === 'simplify' ? simplifyInstructions()
+    : kind === 'graphq' ? graphqInstructions()
+    : reviewInstructions();
   const description = kind === 'simplify'
     ? 'Simplify over-engineered code with approval before edits'
+    : kind === 'graphq'
+    ? 'Generate local repo intelligence and compact AI context packs'
     : 'Review code with lite, mid, and ultra effort modes';
 
   return `---
@@ -187,13 +203,15 @@ export function kiroSteering(kind) {
     return `---
 inclusion: auto
 name: tokenmaxxing-ai
-description: Token-efficient agent workflow for simplification and review tasks.
+description: Token-efficient agent workflows for graph context, simplification, and review tasks.
 ---
 
 ${coreInstructions()}`;
   }
 
-  const body = kind === 'simplify' ? simplifyInstructions() : reviewInstructions();
+  const body = kind === 'simplify' ? simplifyInstructions()
+    : kind === 'graphq' ? graphqInstructions()
+    : reviewInstructions();
   return `---
 inclusion: manual
 ---
@@ -203,13 +221,14 @@ ${body}`;
 
 export function cursorRule() {
   return `---
-description: Tokenmaxxing-AI workflows for /simplify and /review requests.
+description: Tokenmaxxing-AI workflows for /graphq, /simplify, and /review requests.
 globs: ["**/*"]
 alwaysApply: false
 ---
 
 ${coreInstructions()}
 
+When the user asks for /graphq, run the GraphQ workflow to generate the smallest safe context before editing.
 When the user asks for /simplify, follow the simplification workflow.
 When the user asks for /review lite, /review mid, or /review ultra, follow the matching review mode.
 `;
@@ -217,19 +236,19 @@ When the user asks for /review lite, /review mid, or /review ultra, follow the m
 
 export function copilotInstructions() {
   return `${coreInstructions()}
-For GitHub Copilot, treat /simplify and /review as natural-language command intents when no native slash-command file is available in the current surface.
+For GitHub Copilot, treat /graphq, /simplify, and /review as natural-language command intents when no native slash-command file is available in the current surface.
 `;
 }
 
 export function agnosticAgentBlock() {
   return `${coreInstructions()}
-If the current AI tool does not support custom slash commands, treat user messages that start with /simplify or /review as command invocations and follow the matching workflow.
+If the current AI tool does not support custom slash commands, treat user messages that start with /graphq, /simplify, or /review as command invocations and follow the matching workflow.
 `;
 }
 
 export function geminiStyleBlock() {
   return `${coreInstructions()}
-For Gemini-style or Antigravity-style agents, treat slash-prefixed simplify/review requests as command intents and require approval before editing.
+For Gemini-style or Antigravity-style agents, treat slash-prefixed graphq/simplify/review requests as command intents and require approval before editing.
 `;
 }
 
@@ -250,6 +269,7 @@ function reviewModeForKind(kind) {
  */
 function modeBody(kind) {
   switch (kind) {
+    case 'graphq':     return graphqInstructions();
     case 'simplify':    return simplifyInstructions();
     case 'review-lite': return liteReviewInstructions();
     case 'review-mid':  return midReviewInstructions();
@@ -259,8 +279,12 @@ function modeBody(kind) {
 }
 
 function genericCommand(kind, toolName) {
-  const body = kind === 'simplify' ? simplifyInstructions() : reviewInstructions();
-  const title = kind === 'simplify' ? '/simplify' : '/review';
+  const body = kind === 'simplify' ? simplifyInstructions()
+    : kind === 'graphq' ? graphqInstructions()
+    : reviewInstructions();
+  const title = kind === 'simplify' ? '/simplify'
+    : kind === 'graphq' ? '/graphq'
+    : '/review';
 
   return `${GENERATED_MARKER}
 # ${toolName} ${title}

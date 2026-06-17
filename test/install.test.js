@@ -42,7 +42,9 @@ test('project install writes all target adapters', async () => {
   });
 
   assert(!result.some((item) => item.action === 'conflict'));
+  await assertContains(path.join(root, '.agents/skills/graphq/SKILL.md'), 'Tokenmaxxing-AI /graphq');
   await assertContains(path.join(root, '.claude/skills/simplify/SKILL.md'), 'Proceed with these edits?');
+  await assertContains(path.join(root, '.claude/skills/graphq/SKILL.md'), 'smallest safe context');
   await assertContains(path.join(root, '.claude/skills/simplify/SKILL.md'), '.tokenmaxxing.md');
   await assertContains(path.join(root, '.claude/skills/review/SKILL.md'), 'lite/light, mid/medium, ultra/full');
   await assertContains(path.join(root, '.claude/skills/review-lite/SKILL.md'), 'Run this as /review lite.');
@@ -59,6 +61,10 @@ test('project install writes all target adapters', async () => {
   await assertContains(path.join(root, '.agents/skills/review-mid/references/maintainability_checklist.md'), 'Cyclomatic complexity');
   await assertContains(path.join(root, '.agents/skills/review-ultra/references/simplification_signals.md'), 'Abstractions Without Payoff');
   await assertContains(path.join(root, '.opencode/commands/review.md'), 'lite/light, mid/medium, ultra/full');
+  await assertContains(path.join(root, '.opencode/commands/graphq.md'), 'GraphQ is local-first');
+  await assertContains(path.join(root, '.commandcode/commands/graphq.md'), 'CommandCode /graphq');
+  await assertContains(path.join(root, '.antigravity/commands/graphq.md'), 'Antigravity /graphq');
+  await assertContains(path.join(root, '.kiro/steering/graphq.md'), 'GraphQ is local-first');
   await assertContains(path.join(root, '.kiro/steering/tokenmaxxing-ai.md'), 'inclusion: auto');
   await assertContains(path.join(root, '.github/instructions/tokenmaxxing-ai.instructions.md'), '/review ultra');
   await assertContains(path.join(root, '.github/instructions/tokenmaxxing-ai.instructions.md'), 'Adaptive Memory');
@@ -112,6 +118,7 @@ test('user-scope codex install writes to the supplied home directory', async () 
     force: false
   });
 
+  await assertContains(path.join(home, '.agents/skills/graphq/SKILL.md'), 'Tokenmaxxing-AI /graphq');
   await assertContains(path.join(home, '.agents/skills/simplify/SKILL.md'), 'Tokenmaxxing-AI /simplify');
   await assertContains(path.join(home, '.agents/skills/simplify/SKILL.md'), 'Adaptive Project Memory');
   await assertContains(path.join(home, '.agents/skills/review-lite/SKILL.md'), 'name: review-lite');
@@ -334,15 +341,16 @@ test('plugin.json longDescription mentions adaptive project memory', async () =>
   const content = await fs.readFile(pluginPath, 'utf8');
   assert(content.includes('.tokenmaxxing.md'), 'plugin.json longDescription should mention .tokenmaxxing.md');
   assert(content.includes('adaptive'), 'plugin.json longDescription should mention adaptive memory');
+  assert(content.includes('GraphQ'), 'plugin.json longDescription should mention GraphQ');
 });
 
-test('openai.yaml files mention adaptive project memory', async () => {
-  for (const skill of ['simplify', 'review', 'review-lite', 'review-mid', 'review-ultra']) {
+test('openai.yaml files mention adaptive project memory or local context packs', async () => {
+  for (const skill of ['graphq', 'simplify', 'review', 'review-lite', 'review-mid', 'review-ultra']) {
     const yamlPath = path.join(__dirname, '..', 'skills', skill, 'agents', 'openai.yaml');
     const content = await fs.readFile(yamlPath, 'utf8');
     assert(
-      content.includes('.tokenmaxxing.md') || content.includes('adaptive'),
-      `${skill}/agents/openai.yaml should mention adaptive project memory`
+      content.includes('.tokenmaxxing.md') || content.includes('adaptive') || content.includes('context'),
+      `${skill}/agents/openai.yaml should mention adaptive project memory or context packs`
     );
   }
 });
