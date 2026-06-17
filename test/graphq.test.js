@@ -644,7 +644,7 @@ test('scanner ignores import-like lines inside multiline template literals', asy
   assert(main.imports.includes('./lazy.js'));
   assert(main.imports.includes('node:fs'));
   assert(!main.imports.includes('express'));
-  assert(!main.imports.includes('./fake.js'));
+  assert(!main.imports.includes('./fake'));
   assert(!main.imports.includes('fake-lib'));
   assert(!main.imports.includes('./fake-lazy.js'));
   assert(!main.imports.includes('./fake-export.js'));
@@ -661,6 +661,34 @@ test('scanner ignores fake require and dynamic import inside multiline template 
   assert(!main.imports.includes('fake-lib'));
   assert(!main.imports.includes('./fake-lazy.js'));
   assert(scan.externalImports.some((entry) => entry.package === 'node:fs'));
+  const fakeLibDeps = scan.externalImports.filter((entry) => entry.package === 'fake-lib');
+  assert.equal(fakeLibDeps.length, 0);
+});
+
+test('scanner ignores route-like lines inside multiline template literals', async () => {
+  const root = await makeMultilineTemplateRouteFixture();
+  const scan = await scanProject(root);
+  const server = scan.files.find((file) => file.path === 'src/server.js');
+  assert(server);
+  assert(server.routes.includes('/real-route'));
+  assert(server.routes.includes('/real-post'));
+  assert(server.routes.includes('/real-health'));
+  assert(!server.routes.includes('/fake-route'));
+  assert(!server.routes.includes('/fake-post'));
+  assert(!server.routes.includes('/fake-health'));
+});
+
+test('scanner ignores import and route patterns inside comments', async () => {
+  const root = await makeCommentFixture();
+  const scan = await scanProject(root);
+  const commented = scan.files.find((file) => file.path === 'src/commented.js');
+  assert(commented);
+  assert(commented.imports.includes('./real.js'));
+  assert(commented.routes.includes('/real-route'));
+  assert(!commented.imports.includes('fake'));
+  assert(!commented.imports.includes('fake-block'));
+  assert(!commented.routes.includes('/fake-comment'));
+  assert(!commented.routes.includes('/fake-block-route'));
 });
 
 test('scanner detects Next.js app and pages API route conventions', async () => {
@@ -877,6 +905,7 @@ async function makeMultilineTemplateFixture() {
   await fs.writeFile(path.join(root, 'src/main.js'), [
     'const fixture = `',
     'import express from "express";',
+    'import fake from "./fake";',
     'const fake = require("fake-lib");',
     'const lazy = import("./fake-lazy.js");',
     '`;',
@@ -896,6 +925,47 @@ async function makeMultilineTemplateFixture() {
     'void other;',
     'void lazyReal;',
     'void fs;',
+    ''
+  ].join('\n'), 'utf8');
+  return root;
+}
+
+async function makeMultilineTemplateRouteFixture() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tokenmaxxing-ai-graphq-multiline-template-routes-'));
+  await fs.mkdir(path.join(root, 'src'), { recursive: true });
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'multiline-template-routes', type: 'module' }, null, 2), 'utf8');
+  await fs.writeFile(path.join(root, 'src/server.js'), [
+    'const docs = `',
+    "app.get('/fake-route', () => {});",
+    "router.post('/fake-post', () => {});",
+    "fastify.get('/fake-health', () => {});",
+    '`;',
+    '',
+    'const app = express();',
+    "app.get('/real-route', () => {});",
+    "router.post('/real-post', () => {});",
+    "fastify.get('/real-health', () => {});",
+    'void docs;',
+    ''
+  ].join('\n'), 'utf8');
+  return root;
+}
+
+async function makeCommentFixture() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tokenmaxxing-ai-graphq-comment-fixture-'));
+  await fs.mkdir(path.join(root, 'src'), { recursive: true });
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'comment-fixture', type: 'module' }, null, 2), 'utf8');
+  await fs.writeFile(path.join(root, 'src/commented.js'), [
+    '// import fake from "fake";',
+    '// app.get("/fake-comment", handler);',
+    '',
+    '/*',
+    'import fakeBlock from "fake-block";',
+    'router.post("/fake-block-route", handler);',
+    '*/',
+    '',
+    'import { real } from "./real.js";',
+    "app.get('/real-route', () => {});",
     ''
   ].join('\n'), 'utf8');
   return root;
