@@ -5,7 +5,9 @@ import {
   DEFAULT_MAX_FILE_BYTES,
   classifyPath,
   compileGitignore,
+  hasGitignoreNegationForDescendant,
   isBinaryBuffer,
+  isGitignoreNegated,
   matchesGitignore,
   normalizeRepoPath
 } from './fileClassifier.js';
@@ -58,11 +60,6 @@ export async function scanProject(projectRoot, options = {}) {
       const relativePath = normalizeRepoPath(path.join(relativeDir, entry.name));
       const absolutePath = path.join(root, relativePath);
 
-      if (matchesGitignore(relativePath, gitignorePatterns)) {
-        skipped.push({ path: relativePath, reason: 'gitignore' });
-        continue;
-      }
-
       let stats;
       try {
         stats = await fs.lstat(absolutePath);
@@ -71,12 +68,21 @@ export async function scanProject(projectRoot, options = {}) {
         continue;
       }
 
+      const ignoredByGitignore = matchesGitignore(relativePath, gitignorePatterns);
+      const hasNegatedDescendant = stats.isDirectory() && hasGitignoreNegationForDescendant(relativePath, gitignorePatterns);
+      if (ignoredByGitignore && !hasNegatedDescendant) {
+        skipped.push({ path: relativePath, reason: 'gitignore' });
+        continue;
+      }
+
       if (stats.isSymbolicLink()) {
         skipped.push({ path: relativePath, reason: 'symlink' });
         continue;
       }
 
-      const classification = classifyPath(relativePath);
+      const classification = classifyPath(relativePath, {
+        allowIgnoredSegments: hasNegatedDescendant || isGitignoreNegated(relativePath, gitignorePatterns)
+      });
       if (entry.isDirectory()) {
         if (classification.action === 'skip' && classification.reason !== 'unsupported file type') {
           skipped.push({ path: relativePath, reason: classification.reason });

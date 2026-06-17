@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Writable, Readable } from 'node:stream';
 import { runCli } from '../src/cli.js';
-import { classifyPath } from '../src/graphq/fileClassifier.js';
+import { classifyPath, compileGitignore, matchesGitignore } from '../src/graphq/fileClassifier.js';
 import {
   scanProject,
   resolveInternalImport,
@@ -15,13 +15,14 @@ import {
   routeFromPagesApiPath,
   maskJsStringLiterals
 } from '../src/graphq/scanner.js';
-import { stableObjectFromEntries } from '../src/graphq/contextPackWriter.js';
+import { ensureText, stableObjectFromEntries } from '../src/graphq/contextPackWriter.js';
 import {
   safeMemoryPath,
   readGraphqMemory,
   MEMORY_SCHEMA_VERSION
 } from '../src/graphq/memoryStore.js';
 import { formatJsonOutput, parseArgs } from '../src/graphq/cli.js';
+import { corruptCacheMessage, readPreviousState } from '../src/graphq/freshness.js';
 import {
   buildImpactMap,
   buildRiskMap,
@@ -30,6 +31,7 @@ import {
 } from '../src/graphq/taskRouter.js';
 import { runGraphq } from '../src/graphq/index.js';
 import { isBugLikeTask } from '../src/graphq/memoryStore.js';
+import { isBugLikeTaskText, isBugTaskToken, tokenizeTaskText } from '../src/graphq/taskText.js';
 
 test('graphq default scan creates compact repo intelligence files without source dumps', async () => {
   const root = await makeGraphqProject();
@@ -727,6 +729,229 @@ test('classifyPath allows .env.example but skips real env and secret paths', () 
   assert.equal(classifyPath('certs/server.pem').action, 'skip');
 });
 
+test('ensureText creates missing files but does not overwrite existing decisions or learnings', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tokenmaxxing-ai-graphq-ensure-text-'));
+  const graphqRoot = path.join(root, '.graphq');
+  await fs.mkdir(path.join(graphqRoot, 'memory'), { recursive: true });
+
+  const decisionsPath = path.join(graphqRoot, 'memory/decisions.md');
+  const learningsPath = path.join(graphqRoot, 'memory/learnings.md');
+  const userDecisions = '# GraphQ Decisions\n\n- User decision: keep custom auth flow.\n';
+  const userLearnings = '# GraphQ Learnings\n\n- User learning: verify jwt expiry in tests.\n';
+
+  await ensureText(graphqRoot, 'memory/decisions.md', '# GraphQ Decisions\n\n');
+  await ensureText(graphqRoot, 'memory/learnings.md', '# GraphQ Learnings\n\n');
+  await fs.writeFile(decisionsPath, userDecisions, 'utf8');
+  await fs.writeFile(learningsPath, userLearnings, 'utf8');
+
+  await ensureText(graphqRoot, 'memory/decisions.md', '# GraphQ Decisions\n\n');
+  await ensureText(graphqRoot, 'memory/learnings.md', '# GraphQ Learnings\n\n');
+
+  assert.equal(await fs.readFile(decisionsPath, 'utf8'), userDecisions);
+  assert.equal(await fs.readFile(learningsPath, 'utf8'), userLearnings);
+});
+
+// F-4: ensureText must not overwrite existing memory decisions/learnings on repeat scans.
+test('graphq repeat scan preserves user memory decisions and learnings', async () => {
+  const root = await makeGraphqProject();
+  const decisionsPath = path.join(root, '.graphq/memory/decisions.md');
+  const learningsPath = path.join(root, '.graphq/memory/learnings.md');
+
+  await runGraphq([], { cwd: root, stdout: captureStream(), stderr: captureStream() });
+  await fs.writeFile(decisionsPath, '# GraphQ Decisions\n\n- User decision: keep custom auth flow.\n', 'utf8');
+  await fs.writeFile(learningsPath, '# GraphQ Learnings\n\n- User learning: verify jwt expiry in tests.\n', 'utf8');
+
+  await runGraphq([], { cwd: root, stdout: captureStream(), stderr: captureStream() });
+  await runGraphq(['task', 'fix auth token bug'], {
+    cwd: root,
+    stdout: captureStream(),
+    stderr: captureStream()
+  });
+
+  const decisions = await fs.readFile(decisionsPath, 'utf8');
+  const learnings = await fs.readFile(learningsPath, 'utf8');
+  assert.match(decisions, /User decision: keep custom auth flow/);
+  assert.match(learnings, /User learning: verify jwt expiry in tests/);
+});
+
+// F-3: gitignore negation patterns must override earlier ignore rules.
+test('matchesGitignore honors negation patterns after broader ignore rules', () => {
+  const patterns = compileGitignore([
+    'dist/',
+    '!dist/keep.js',
+    'build/',
+    '!build/keep.js',
+    '*.log',
+    '!important.log'
+  ].join('\n'));
+
+  assert.equal(matchesGitignore('dist/app.js', patterns), true);
+  assert.equal(matchesGitignore('dist/keep.js', patterns), false);
+  assert.equal(matchesGitignore('build/output.js', patterns), true);
+  assert.equal(matchesGitignore('build/keep.js', patterns), false);
+  assert.equal(matchesGitignore('tmp/trace.log', patterns), true);
+  assert.equal(matchesGitignore('important.log', patterns), false);
+
+  const reversed = compileGitignore('!dist/keep.js\ndist/\n');
+  assert.equal(matchesGitignore('dist/keep.js', reversed), true, 'negation before ignore does not unignore');
+  assert.equal(matchesGitignore('dist/app.js', reversed), true);
+
+  const ordered = compileGitignore('dist/\n!dist/keep.js\n');
+  assert.equal(matchesGitignore('dist/keep.js', ordered), false, 'negation after ignore unignores');
+  assert.equal(matchesGitignore('dist/app.js', ordered), true);
+});
+
+test('compileGitignore skips comments and blank lines', () => {
+  const patterns = compileGitignore([
+    '# ignore dist output',
+    '',
+    'dist/',
+    '   ',
+    '# keep one file',
+    '!dist/keep.js'
+  ].join('\n'));
+
+  assert.deepEqual(patterns, [
+    { pattern: 'dist/', negate: false },
+    { pattern: 'dist/keep.js', negate: true }
+  ]);
+  assert.equal(matchesGitignore('dist/app.js', patterns), true);
+  assert.equal(matchesGitignore('dist/keep.js', patterns), false);
+});
+
+test('scanProject keeps gitignore-negated source files', async () => {
+  const root = await makeGitignoreNegationFixture();
+  const scan = await scanProject(root);
+
+  assert(scan.files.some((file) => file.path === 'dist/keep.js'));
+  assert(!scan.files.some((file) => file.path === 'dist/ignored.js'));
+  assert(scan.skipped.some((item) => item.path === 'dist/ignored.js' && item.reason === 'gitignore'));
+});
+
+// F-6: isDocsPath uses explicit parentheses for docs/ markdown matching.
+test('classifyPath keeps markdown files under docs/', () => {
+  const guide = classifyPath('docs/guide.md');
+  assert.equal(guide.action, 'keep');
+  assert.equal(guide.category, 'docs');
+  assert.equal(guide.language, 'markdown');
+
+  assert.equal(classifyPath('docs/config.txt').action, 'skip', 'non-markdown under docs/ stays skipped');
+  assert.equal(classifyPath('README.md').category, 'docs', 'root doc names still classify as docs');
+});
+
+// F-1/F-8: shared taskText tokenization keeps memory and router bug detection aligned.
+test('bug task tokenization agrees across memory and router for normal suffix camelCase and plural cases', () => {
+  const cases = [
+    { task: 'fix auth bug', expected: true, kind: 'normal bug words' },
+    { task: 'fixing auth regressions', expected: true, kind: 'fixing suffix' },
+    { task: 'fixAuthRegression', expected: true, kind: 'camelCase' },
+    { task: 'fix auth failures', expected: true, kind: 'plural stripping' },
+    { task: 'improve documentation wording', expected: false, kind: 'non-bug control' }
+  ];
+
+  for (const { task, expected, kind } of cases) {
+    const memoryDetectsBug = isBugLikeTask(task);
+    const routerDetectsBug = routerDetectsBugLikeTask(task);
+    assert.equal(memoryDetectsBug, expected, `${kind}: memory mismatch for ${task}`);
+    assert.equal(routerDetectsBug, expected, `${kind}: router mismatch for ${task}`);
+    assert.equal(memoryDetectsBug, routerDetectsBug, `${kind}: memory/router disagree on ${task}`);
+  }
+
+  const fixingTokens = tokenizeTaskText('fixing auth regressions');
+  assert(fixingTokens.includes('fix'));
+  assert(fixingTokens.includes('regression'));
+
+  const pluralTokens = tokenizeTaskText('fix auth failures');
+  assert(pluralTokens.includes('failure'));
+  assert(isBugTaskToken('failure'));
+});
+
+test('router recurring bug boost applies for normal suffix camelCase and plural bug tasks', async () => {
+  const root = await makeMemoryRankingFixture();
+  const scan = await scanProject(root);
+  const memory = {
+    hotspots: { files: {} },
+    recurringBugs: {
+      patterns: {
+        ranking: {
+          count: 2,
+          files: ['src/graphq/taskRouter.js']
+        }
+      }
+    }
+  };
+
+  const bugTasks = [
+    'fix graphq ranking bug',
+    'fixing graphq ranking bug',
+    'fixGraphqRankingBug',
+    'fix graphq ranking failures'
+  ];
+
+  const nonBugPlan = buildTaskPlan('improve graphq ranking quality', scan, { memory });
+  const nonBugRank = nonBugPlan.primaryFiles.indexOf('src/graphq/taskRouter.js');
+
+  for (const task of bugTasks) {
+    assert(routerDetectsBugLikeTask(task), `router should detect bug task: ${task}`);
+    const bugPlan = buildTaskPlan(task, scan, { memory });
+    const bugRank = bugPlan.primaryFiles.indexOf('src/graphq/taskRouter.js');
+    assert(bugRank !== -1, `router plan should include taskRouter.js for ${task}`);
+    if (nonBugRank !== -1) {
+      assert(bugRank <= nonBugRank, `recurring boost should rank ${task} at or above non-bug task`);
+    }
+  }
+});
+
+test('memory flow records bugFixSelectionCount for normal suffix camelCase and plural bug tasks', async () => {
+  const root = await makeGraphqProject();
+  const bugTasks = [
+    'fix auth bug',
+    'fixing token validation',
+    'fixAuthBug',
+    'fix auth failures'
+  ];
+
+  for (const task of bugTasks) {
+    assert(isBugLikeTask(task), `memory should detect bug task: ${task}`);
+    await runGraphq(['task', task], {
+      cwd: root,
+      stdout: captureStream(),
+      stderr: captureStream()
+    });
+  }
+
+  const hotspots = JSON.parse(await fs.readFile(path.join(root, '.graphq/memory/hotspots.json'), 'utf8'));
+  const jwtPath = 'src/auth/jwt.js';
+  assert.equal(
+    hotspots.files[jwtPath]?.bugFixSelectionCount ?? 0,
+    bugTasks.length,
+    'each bug-task variant should increment bugFixSelectionCount on selected auth files'
+  );
+});
+
+// F-2: computeDependencyDepth runs one BFS across all direct dependents.
+test('computeDependencyDepth handles shared downstream dependents cycles and maxDepth cap', async () => {
+  const root = await makeDepthFixture();
+  const scan = await scanProject(root);
+  const impact = buildImpactMap(scan);
+
+  assert.deepEqual(impact['src/hub.js'].directDependents.sort(), ['src/branch-a.js', 'src/branch-b.js']);
+  assert.equal(impact['src/hub.js'].maxDepth, 3, 'deepest branch chain stays depth 3');
+
+  assert.deepEqual(impact['src/branch-a.js'].directDependents.sort(), ['src/deep.js', 'src/tail.js']);
+  assert.deepEqual(impact['src/branch-b.js'].directDependents, ['src/tail.js']);
+  assert(impact['src/hub.js'].indirectDependents.includes('src/tail.js'), 'hub reaches shared downstream tail once');
+
+  assert.equal(impact['src/mid.js'].maxDepth, 1, 'direct dependent depth starts at 1');
+  assert.equal(impact['src/leaf.js'].maxDepth, impact['src/mid.js'].maxDepth + 1);
+
+  assert.equal(impact['src/cycle-a.js'].maxDepth, 1, 'cycles stay bounded');
+  assert.equal(impact['src/cycle-b.js'].maxDepth, 1, 'cycles stay bounded');
+
+  const capped = buildImpactMap(scan, { maxDepth: 2 });
+  assert.equal(capped['src/hub.js'].maxDepth, 2, 'maxDepth option caps traversal');
+});
+
 test('scanner skips binary and oversized files', async () => {
   const root = await makeSkipFixture();
   const scan = await scanProject(root, { maxFileBytes: 64 });
@@ -757,6 +982,69 @@ test('safeMemoryPath rejects traversal outside memory root', () => {
   assert.throws(() => safeMemoryPath(memoryRoot, '/absolute.json'), /Memory path must be relative/);
   const safe = safeMemoryPath(memoryRoot, 'hotspots.json');
   assert(safe.startsWith(memoryRoot));
+});
+
+// F-9: corrupt .graphq/cache/ JSON must not crash commands with raw SyntaxError.
+test('readPreviousState and graphq commands handle corrupt cache files gracefully', async () => {
+  const root = await makeGraphqProject();
+  const cacheRoot = path.join(root, '.graphq', 'cache');
+  await fs.mkdir(cacheRoot, { recursive: true });
+  await fs.writeFile(path.join(cacheRoot, 'hashes.json'), '{not json', 'utf8');
+  await fs.writeFile(path.join(cacheRoot, 'state.json'), '{also bad', 'utf8');
+
+  const previous = await readPreviousState(root);
+  assert.deepEqual(previous.hashes, {});
+  assert.equal(previous.state, null);
+  assert.equal(previous.cacheCorrupt, true);
+  assert.deepEqual(previous.corruptCachePaths, ['.graphq/cache/hashes.json', '.graphq/cache/state.json']);
+
+  const expectedCorruptMessage = corruptCacheMessage(previous.corruptCachePaths);
+
+  const stderr = captureStream();
+  const stdout = captureStream();
+  const statusCode = await runGraphq(['status'], { cwd: root, stdout, stderr });
+  assert.equal(statusCode, 1);
+  assert.equal(stdout.text(), '');
+  assert.equal(stderr.text().trim(), corruptCacheMessage(['.graphq/cache/state.json']));
+  assertNoRawParserLeak(stdout, stderr);
+
+  const scanStdout = captureStream();
+  const scanStderr = captureStream();
+  const scanCode = await runGraphq([], { cwd: root, stdout: scanStdout, stderr: scanStderr });
+  assert.equal(scanCode, 1);
+  assert.equal(scanStderr.text().trim(), expectedCorruptMessage);
+  assertNoRawParserLeak(scanStdout, scanStderr);
+  await assert.rejects(
+    () => fs.readFile(path.join(cacheRoot, 'hashes.json'), 'utf8').then((text) => JSON.parse(text)),
+    SyntaxError
+  );
+
+  const cleanCode = await runGraphq(['clean'], { cwd: root, stdout: captureStream(), stderr: captureStream() });
+  assert.equal(cleanCode, 0);
+  const recoverCode = await runGraphq([], { cwd: root, stdout: captureStream(), stderr: captureStream() });
+  assert.equal(recoverCode, 0);
+  const hashes = JSON.parse(await fs.readFile(path.join(cacheRoot, 'hashes.json'), 'utf8'));
+  const state = JSON.parse(await fs.readFile(path.join(cacheRoot, 'state.json'), 'utf8'));
+  assert.ok(hashes.files);
+  assert.ok(state.fileCount >= 0);
+});
+
+test('graphq status avoids raw parser errors for corrupt report JSON', async () => {
+  const root = await makeGraphqProject();
+  await runGraphq([], { cwd: root, stdout: captureStream(), stderr: captureStream() });
+
+  await fs.writeFile(path.join(root, '.graphq/reports/freshness.json'), '{bad freshness', 'utf8');
+
+  const stderr = captureStream();
+  const stdout = captureStream();
+  const exitCode = await runGraphq(['status'], { cwd: root, stdout, stderr });
+  assert.equal(exitCode, 1);
+  assert.equal(stdout.text(), '');
+  assert.equal(
+    stderr.text().trim(),
+    corruptCacheMessage(['.graphq/reports/freshness.json'])
+  );
+  assertNoRawParserLeak(stdout, stderr);
 });
 
 test('readGraphqMemory handles missing and corrupt memory files gracefully', async () => {
@@ -861,6 +1149,23 @@ test('parseArgs accepts global flags before and after commands', () => {
   assert.equal(withDir.projectRoot, path.resolve('/tmp/other'));
 });
 
+// F-7: parsePositiveInteger reports positive-integer errors for negative --max-file-bytes values.
+test('parseArgs validates --max-file-bytes values with clear errors', () => {
+  const positiveInteger = /Invalid --max-file-bytes value: -1; expected a positive integer/;
+  const invalidValue = /Invalid --max-file-bytes value:/;
+  const missingValue = /Missing value for --max-file-bytes/;
+
+  assert.throws(() => parseArgs(['--max-file-bytes'], '/tmp/project'), missingValue);
+  assert.throws(() => parseArgs(['--max-file-bytes', '-1'], '/tmp/project'), positiveInteger);
+  assert.throws(() => parseArgs(['--max-file-bytes=-1'], '/tmp/project'), positiveInteger);
+  assert.throws(() => parseArgs(['scan', '--max-file-bytes', '-1'], '/tmp/project'), positiveInteger);
+  assert.throws(() => parseArgs(['--max-file-bytes', '0'], '/tmp/project'), invalidValue);
+  assert.throws(() => parseArgs(['--max-file-bytes', 'abc'], '/tmp/project'), invalidValue);
+
+  assert.equal(parseArgs(['--max-file-bytes', '1024'], '/tmp/project').maxFileBytes, 1024);
+  assert.equal(parseArgs(['--max-file-bytes=2048'], '/tmp/project').maxFileBytes, 2048);
+});
+
 test('graphq --explain writes ranking explanations without source dumps', async () => {
   const root = await makeGraphqProject();
   await runGraphq(['task', 'fix auth token bug', '--explain'], {
@@ -895,6 +1200,39 @@ test('graphq impact tests risk and status commands print concise output', async 
   assert.match(statusOutput.text(), /files:/);
   assert.match(statusOutput.text(), /recommendation:/);
 });
+
+async function makeGitignoreNegationFixture() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tokenmaxxing-ai-graphq-gitignore-negation-'));
+  await fs.mkdir(path.join(root, 'dist'), { recursive: true });
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'gitignore-negation', type: 'module' }, null, 2), 'utf8');
+  await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n!dist/keep.js\n', 'utf8');
+  await fs.writeFile(path.join(root, 'dist/keep.js'), 'export const keep = true;\n', 'utf8');
+  await fs.writeFile(path.join(root, 'dist/ignored.js'), 'export const ignored = true;\n', 'utf8');
+  return root;
+}
+
+async function makeDepthFixture() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tokenmaxxing-ai-graphq-depth-'));
+  await fs.mkdir(path.join(root, 'src'), { recursive: true });
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'depth-fixture', type: 'module' }, null, 2), 'utf8');
+  await fs.writeFile(path.join(root, 'src/hub.js'), 'export const hub = 1;\n', 'utf8');
+  await fs.writeFile(path.join(root, 'src/branch-a.js'), "import './hub.js';\nexport const branchA = 1;\n", 'utf8');
+  await fs.writeFile(path.join(root, 'src/branch-b.js'), "import './hub.js';\nexport const branchB = 1;\n", 'utf8');
+  await fs.writeFile(path.join(root, 'src/deep.js'), "import './branch-a.js';\nexport const deep = 1;\n", 'utf8');
+  await fs.writeFile(path.join(root, 'src/deeper.js'), "import './deep.js';\nexport const deeper = 1;\n", 'utf8');
+  await fs.writeFile(path.join(root, 'src/tail.js'), [
+    "import './branch-a.js';",
+    "import './branch-b.js';",
+    'export const tail = 1;',
+    ''
+  ].join('\n'), 'utf8');
+  await fs.writeFile(path.join(root, 'src/leaf.js'), 'export const leaf = 1;\n', 'utf8');
+  await fs.writeFile(path.join(root, 'src/mid.js'), "import './leaf.js';\nexport const mid = 1;\n", 'utf8');
+  await fs.writeFile(path.join(root, 'src/top.js'), "import './mid.js';\nexport const top = 1;\n", 'utf8');
+  await fs.writeFile(path.join(root, 'src/cycle-a.js'), "import './cycle-b.js';\nexport const a = 1;\n", 'utf8');
+  await fs.writeFile(path.join(root, 'src/cycle-b.js'), "import './cycle-a.js';\nexport const b = 1;\n", 'utf8');
+  return root;
+}
 
 async function makeMultilineTemplateFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tokenmaxxing-ai-graphq-multiline-template-'));
@@ -1284,6 +1622,21 @@ async function makeGraphqProject() {
   await fs.writeFile(path.join(root, 'public/assets/logo.png'), Buffer.from([0, 1, 2, 3, 4, 5]));
 
   return root;
+}
+
+function routerDetectsBugLikeTask(task) {
+  const trimmed = task.trim();
+  const sentence = `${trimmed.slice(0, 1).toUpperCase()}${trimmed.slice(1)}`;
+  const normalizedTask = sentence.endsWith('.') ? sentence : `${sentence}.`;
+  return tokenizeTaskText(normalizedTask).some(isBugTaskToken);
+}
+
+function assertNoRawParserLeak(stdout, stderr) {
+  const combined = `${stdout.text()}\n${stderr.text()}`;
+  assert.doesNotMatch(combined, /SyntaxError/i);
+  assert.doesNotMatch(combined, /Unexpected token/i);
+  assert.doesNotMatch(combined, /JSON\.parse/i);
+  assert.doesNotMatch(combined, /not valid JSON/i);
 }
 
 function captureStream() {

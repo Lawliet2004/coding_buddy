@@ -1,21 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { isBugLikeTaskText, tokenizeTaskText } from './taskText.js';
 
 export const MAP_VERSION = 'graphq-v3';
 export const MEMORY_SCHEMA_VERSION = 'graphq-memory-v1';
-
-const BUG_TASK_WORDS = new Set([
-  'bug',
-  'fix',
-  'broken',
-  'failing',
-  'failure',
-  'regression',
-  'crash',
-  'wrong',
-  'issue',
-  'defect'
-]);
 
 const RECURRING_KEYWORDS = [
   'auth',
@@ -43,11 +31,11 @@ const MAX_RECURRING_PATTERNS = 30;
 const MAX_SESSIONS = 200;
 
 export function isBugLikeTask(task) {
-  return tokenize(task).some((token) => BUG_TASK_WORDS.has(token));
+  return isBugLikeTaskText(task);
 }
 
 export function extractRecurringKeywords(task) {
-  const tokens = new Set(tokenize(task));
+  const tokens = new Set(tokenizeTaskText(task));
   return RECURRING_KEYWORDS.filter((keyword) => tokens.has(keyword));
 }
 
@@ -362,13 +350,6 @@ function sortPatterns(patterns) {
 function compactTask(task) {
   const trimmed = String(task ?? '').trim();
   return trimmed.length > MAX_TASK_LENGTH ? `${trimmed.slice(0, MAX_TASK_LENGTH - 3)}...` : trimmed;
-}
-
-function tokenize(value) {
-  return String(value)
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(Boolean);
 }
 
 function unique(values) {

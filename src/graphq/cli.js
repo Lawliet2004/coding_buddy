@@ -1,7 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { writeGraphqOutput } from './contextPackWriter.js';
-import { buildFreshness, readPreviousState } from './freshness.js';
+import {
+  buildFreshness,
+  GraphqCorruptCacheError,
+  readCacheJsonResult,
+  readPreviousState
+} from './freshness.js';
 import { readGraphqMemory, summarizeMemoryForCli } from './memoryStore.js';
 import { scanProject } from './scanner.js';
 import { buildTaskPlan } from './taskRouter.js';
@@ -56,20 +61,23 @@ export async function runGraphq(argv, io = {}) {
     return 0;
   }
 
-  if (parsed.command === 'status') {
-    return status(parsed.projectRoot, stdout, parsed.json);
-  }
-
-  if (parsed.command === 'memory') {
-    return memory(parsed.projectRoot, stdout, parsed.json);
-  }
-
   try {
+    if (parsed.command === 'status') {
+      return await status(parsed.projectRoot, stdout, parsed.json);
+    }
+
+    if (parsed.command === 'memory') {
+      return memory(parsed.projectRoot, stdout, parsed.json);
+    }
+
     const previous = await readPreviousState(parsed.projectRoot);
-    const memory = await readGraphqMemory(parsed.projectRoot);
+    if (previous.cacheCorrupt) {
+      throw new GraphqCorruptCacheError(previous.corruptCachePaths);
+    }
+    const memoryData = await readGraphqMemory(parsed.projectRoot);
     const scan = await scanProject(parsed.projectRoot, { maxFileBytes: parsed.maxFileBytes });
     const freshness = buildFreshness(previous, scan, parsed.command);
-    const taskPlan = buildTaskPlan(parsed.task, scan, { memory, freshness });
+    const taskPlan = buildTaskPlan(parsed.task, scan, { memory: memoryData, freshness });
 
     if (parsed.command === 'changed') {
       await writeGraphqOutput(parsed.projectRoot, scan, freshness, taskPlan, parsed.command, {
@@ -131,8 +139,8 @@ export async function runGraphq(argv, io = {}) {
         suggestedTests: taskPlan.suggestedTests,
         freshness: output.freshness,
         cost: output.costReport,
-        memoryDegraded: memory.degraded,
-        memoryDegradedReasons: memory.degradedReasons
+        memoryDegraded: memoryData.degraded,
+        memoryDegradedReasons: memoryData.degradedReasons
       }));
       return 0;
     }
@@ -219,48 +227,51 @@ async function status(projectRoot, stdout, json) {
   const statePath = path.join(graphqRoot, 'cache/state.json');
   const freshnessPath = path.join(graphqRoot, 'reports/freshness.json');
 
-  try {
-    const [state, freshness, memory] = await Promise.all([
-      fs.readFile(statePath, 'utf8').then((text) => JSON.parse(text)),
-      fs.readFile(freshnessPath, 'utf8').then((text) => JSON.parse(text)).catch((error) => {
-        if (error.code === 'ENOENT') return null;
-        throw error;
-      }),
-      readGraphqMemory(projectRoot)
-    ]);
-    const memorySummary = summarizeMemoryForCli(memory);
-    const payload = {
-      command: 'status',
-      files: state.fileCount ?? 0,
-      lastFullScan: state.lastFullScan ?? 'never',
-      stale: freshness?.stale === false ? false : Boolean(freshness?.stale),
-      recommendation: state.recommendation ?? freshness?.recommendation ?? 'unknown',
-      memory: memorySummary
-    };
-
-    if (json) {
-      stdout.write(formatJsonOutput(payload));
-      return 0;
-    }
-
-    stdout.write('GraphQ status:\n');
-    stdout.write(`  files: ${payload.files}\n`);
-    stdout.write(`  last full scan: ${payload.lastFullScan}\n`);
-    stdout.write(`  stale: ${payload.stale ? 'yes' : freshness?.stale === false ? 'no' : 'unknown'}\n`);
-    stdout.write(`  recommendation: ${payload.recommendation}\n`);
-    if (memorySummary.degraded) {
-      stdout.write(`  memory degraded: yes (${memorySummary.degradedReasons.join(', ')})\n`);
-    }
-    stdout.write(`  memory hotspots: ${memorySummary.hotspotCount}\n`);
-    stdout.write(`  memory recurring patterns: ${memorySummary.recurringPatternCount}\n`);
-    stdout.write(`  memory sessions: ${memorySummary.sessionCount}\n`);
-    return 0;
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+  const [stateResult, freshnessResult, memory] = await Promise.all([
+    readCacheJsonResult(statePath),
+    readCacheJsonResult(freshnessPath),
+    readGraphqMemory(projectRoot)
+  ]);
+  const corruptPaths = [];
+  if (stateResult.corrupt) corruptPaths.push('.graphq/cache/state.json');
+  if (freshnessResult.corrupt) corruptPaths.push('.graphq/reports/freshness.json');
+  if (corruptPaths.length) {
+    throw new GraphqCorruptCacheError(corruptPaths);
+  }
+  if (!stateResult.data) {
     const message = 'GraphQ has not scanned this repo yet. Run graphq scan.\n';
     stdout.write(json ? formatJsonOutput({ command: 'status', scanned: false, message: message.trim() }) : message);
     return 0;
   }
+  const state = stateResult.data;
+  const freshness = freshnessResult.data;
+  const memorySummary = summarizeMemoryForCli(memory);
+  const payload = {
+    command: 'status',
+    files: state.fileCount ?? 0,
+    lastFullScan: state.lastFullScan ?? 'never',
+    stale: freshness?.stale === false ? false : Boolean(freshness?.stale),
+    recommendation: state.recommendation ?? freshness?.recommendation ?? 'unknown',
+    memory: memorySummary
+  };
+
+  if (json) {
+    stdout.write(formatJsonOutput(payload));
+    return 0;
+  }
+
+  stdout.write('GraphQ status:\n');
+  stdout.write(`  files: ${payload.files}\n`);
+  stdout.write(`  last full scan: ${payload.lastFullScan}\n`);
+  stdout.write(`  stale: ${payload.stale ? 'yes' : freshness?.stale === false ? 'no' : 'unknown'}\n`);
+  stdout.write(`  recommendation: ${payload.recommendation}\n`);
+  if (memorySummary.degraded) {
+    stdout.write(`  memory degraded: yes (${memorySummary.degradedReasons.join(', ')})\n`);
+  }
+  stdout.write(`  memory hotspots: ${memorySummary.hotspotCount}\n`);
+  stdout.write(`  memory recurring patterns: ${memorySummary.recurringPatternCount}\n`);
+  stdout.write(`  memory sessions: ${memorySummary.sessionCount}\n`);
+  return 0;
 }
 
 async function memory(projectRoot, stdout, json) {
@@ -314,12 +325,19 @@ function normalizeCommand(value) {
 
 function readValue(args, index, flag) {
   const value = args[index];
-  if (!value || value.startsWith('-')) throw new Error(`Missing value for ${flag}`);
+  if (!value || looksLikeFlagArg(value)) throw new Error(`Missing value for ${flag}`);
   return value;
+}
+
+function looksLikeFlagArg(value) {
+  return value.startsWith('-') && !/^-?\d/.test(value);
 }
 
 function parsePositiveInteger(value, flag) {
   const number = Number(value);
+  if (Number.isSafeInteger(number) && number < 0) {
+    throw new Error(`Invalid ${flag} value: ${value}; expected a positive integer`);
+  }
   if (!Number.isSafeInteger(number) || number <= 0) {
     throw new Error(`Invalid ${flag} value: ${value}`);
   }

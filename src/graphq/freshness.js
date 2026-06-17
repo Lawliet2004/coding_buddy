@@ -1,15 +1,49 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+export function corruptCacheMessage(relativePaths) {
+  const files = relativePaths.join(', ');
+  return `GraphQ cache is corrupt: ${files}. Run graphq clean and graphq scan.`;
+}
+
+export class GraphqCorruptCacheError extends Error {
+  constructor(relativePaths) {
+    super(corruptCacheMessage(relativePaths));
+    this.name = 'GraphqCorruptCacheError';
+    this.relativePaths = relativePaths;
+  }
+}
+
+export async function readCacheJsonResult(filePath) {
+  try {
+    return { data: JSON.parse(await fs.readFile(filePath, 'utf8')), corrupt: false };
+  } catch (error) {
+    if (error.code === 'ENOENT') return { data: null, corrupt: false };
+    if (error instanceof SyntaxError) return { data: null, corrupt: true };
+    throw error;
+  }
+}
+
+export async function readCacheJson(filePath) {
+  return (await readCacheJsonResult(filePath)).data;
+}
+
 export async function readPreviousState(projectRoot) {
   const graphqRoot = path.join(projectRoot, '.graphq');
-  const [hashes, state] = await Promise.all([
-    readJson(path.join(graphqRoot, 'cache/hashes.json')),
-    readJson(path.join(graphqRoot, 'cache/state.json'))
+  const hashesPath = '.graphq/cache/hashes.json';
+  const statePath = '.graphq/cache/state.json';
+  const [hashesResult, stateResult] = await Promise.all([
+    readCacheJsonResult(path.join(graphqRoot, 'cache/hashes.json')),
+    readCacheJsonResult(path.join(graphqRoot, 'cache/state.json'))
   ]);
+  const corruptCachePaths = [];
+  if (hashesResult.corrupt) corruptCachePaths.push(hashesPath);
+  if (stateResult.corrupt) corruptCachePaths.push(statePath);
   return {
-    hashes: hashes?.files ?? {},
-    state: state ?? null
+    hashes: hashesResult.data?.files ?? {},
+    state: stateResult.data ?? null,
+    cacheCorrupt: corruptCachePaths.length > 0,
+    corruptCachePaths
   };
 }
 
@@ -56,15 +90,6 @@ export function buildState(scan, freshness, command) {
     bytesScanned: scan.totals.bytesScanned,
     recommendation: freshness.recommendation
   };
-}
-
-async function readJson(filePath) {
-  try {
-    return JSON.parse(await fs.readFile(filePath, 'utf8'));
-  } catch (error) {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  }
 }
 
 function recommendation({ firstScan, addedFiles, changedFiles, deletedFiles }) {

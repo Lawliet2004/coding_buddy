@@ -76,14 +76,14 @@ export function normalizeRepoPath(value) {
   return String(value).split(path.sep).join('/').replace(/^\/+/, '');
 }
 
-export function classifyPath(relativePath) {
+export function classifyPath(relativePath, options = {}) {
   const repoPath = normalizeRepoPath(relativePath);
   const lowerPath = repoPath.toLowerCase();
   const segments = lowerPath.split('/');
   const name = segments.at(-1) ?? lowerPath;
   const ext = path.posix.extname(lowerPath);
 
-  if (segments.some((segment) => SKIP_SEGMENTS.has(segment))) {
+  if (!options.allowIgnoredSegments && segments.some((segment) => SKIP_SEGMENTS.has(segment))) {
     return skip('ignored path segment');
   }
 
@@ -141,7 +141,14 @@ export function compileGitignore(raw) {
   return raw
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith('#') && !line.startsWith('!'));
+    .filter((line) => line && !line.startsWith('#'))
+    .map((pattern) => {
+      if (pattern.startsWith('!')) {
+        return { pattern: pattern.slice(1), negate: true };
+      }
+      return { pattern, negate: false };
+    })
+    .filter((entry) => entry.pattern.length > 0);
 }
 
 export function matchesGitignore(relativePath, patterns) {
@@ -149,29 +156,67 @@ export function matchesGitignore(relativePath, patterns) {
   const segments = repoPath.split('/');
   const name = segments.at(-1) ?? repoPath;
 
-  return patterns.some((pattern) => {
-    let normalized = pattern.replaceAll('\\', '/').replace(/^\/+/, '');
+  // gitignore order semantics: later patterns override earlier ones. A positive
+  // pattern marks the path ignored; a matching negation un-ignores it.
+  let ignored = false;
+  for (const { pattern, negate } of patterns) {
+    if (gitignorePatternMatches(pattern, repoPath, segments, name)) {
+      ignored = !negate;
+    }
+  }
+  return ignored;
+}
+
+export function hasGitignoreNegationForDescendant(relativePath, patterns) {
+  const repoPath = normalizeRepoPath(relativePath).replace(/\/+$/, '');
+  if (!repoPath) return false;
+
+  return patterns.some(({ pattern, negate }) => {
+    if (!negate) return false;
+    const normalized = pattern.replaceAll('\\', '/').replace(/^\/+/, '').replace(/\/+$/, '');
     if (!normalized) return false;
-
-    if (normalized.endsWith('/')) {
-      normalized = normalized.slice(0, -1);
-      return repoPath === normalized || repoPath.startsWith(`${normalized}/`) || segments.includes(normalized);
-    }
-
-    if (normalized.includes('*')) {
-      const source = normalized
-        .split('*')
-        .map(escapeRegExp)
-        .join('[^/]*');
-      return new RegExp(`(^|/)${source}$`).test(repoPath);
-    }
-
-    if (normalized.includes('/')) {
-      return repoPath === normalized || repoPath.startsWith(`${normalized}/`);
-    }
-
-    return name === normalized || segments.includes(normalized);
+    if (normalized === repoPath || normalized.startsWith(`${repoPath}/`)) return true;
+    return !normalized.includes('/');
   });
+}
+
+export function isGitignoreNegated(relativePath, patterns) {
+  const repoPath = normalizeRepoPath(relativePath);
+  const segments = repoPath.split('/');
+  const name = segments.at(-1) ?? repoPath;
+  let negated = false;
+
+  for (const { pattern, negate } of patterns) {
+    if (gitignorePatternMatches(pattern, repoPath, segments, name)) {
+      negated = negate;
+    }
+  }
+
+  return negated;
+}
+
+function gitignorePatternMatches(pattern, repoPath, segments, name) {
+  let normalized = pattern.replaceAll('\\', '/').replace(/^\/+/, '');
+  if (!normalized) return false;
+
+  if (normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1);
+    return repoPath === normalized || repoPath.startsWith(`${normalized}/`) || segments.includes(normalized);
+  }
+
+  if (normalized.includes('*')) {
+    const source = normalized
+      .split('*')
+      .map(escapeRegExp)
+      .join('[^/]*');
+    return new RegExp(`(^|/)${source}$`).test(repoPath);
+  }
+
+  if (normalized.includes('/')) {
+    return repoPath === normalized || repoPath.startsWith(`${normalized}/`);
+  }
+
+  return name === normalized || segments.includes(normalized);
 }
 
 function isSecretPath(lowerPath, name, ext) {
@@ -208,7 +253,7 @@ function isConfigPath(lowerPath, name) {
 }
 
 function isDocsPath(lowerPath, name) {
-  return DOC_NAMES.has(name) || lowerPath.startsWith('docs/') && lowerPath.endsWith('.md');
+  return DOC_NAMES.has(name) || (lowerPath.startsWith('docs/') && lowerPath.endsWith('.md'));
 }
 
 function languageFor(ext) {

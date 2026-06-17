@@ -22,7 +22,7 @@
   ],
   "scripts": {
     "test": "node --test",
-    "check": "node --check bin/tokenmaxxing-ai.js && node --check bin/graphq.js && node --check src/cli.js && node --check src/install.js && node --check src/adapters.js && node --check src/templates.js && node --check src/graphq/index.js && node --check src/graphq/cli.js && node --check src/graphq/scanner.js && node --check src/graphq/fileClassifier.js && node --check src/graphq/taskRouter.js && node --check src/graphq/contextPackWriter.js && node --check src/graphq/freshness.js && node --check src/graphq/costTracker.js && node --check src/graphq/memoryStore.js"
+    "check": "node scripts/check-js.mjs"
   },
   "keywords": [
     "ai",

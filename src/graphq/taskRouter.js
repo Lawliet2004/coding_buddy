@@ -1,4 +1,5 @@
 import { pathTokens } from './fileClassifier.js';
+import { isBugTaskToken, tokenizeTaskText } from './taskText.js';
 
 const HIGH_CONTEXT_WORDS = new Set([
   'refactor',
@@ -23,7 +24,7 @@ const LOW_CONTEXT_WORDS = new Set(['typo', 'docs', 'readme', 'formatting', 'comm
 
 export function buildTaskPlan(task, scan, options = {}) {
   const normalizedTask = normalizeTask(task);
-  const taskTokens = tokenize(normalizedTask);
+  const taskTokens = tokenizeTaskText(normalizedTask);
   const memory = options.memory ?? null;
   const freshness = options.freshness ?? null;
   const contextMode = selectContextMode(normalizedTask, taskTokens, scan);
@@ -203,11 +204,11 @@ function scoreFile(file, taskTokens, risk, memory, scan, freshness) {
       score += 3;
       reasons.push('tag match');
     }
-    if (!isRedundantGraphqToken(file, token) && file.exports.some((symbol) => tokenize(symbol).includes(token))) {
+    if (!isRedundantGraphqToken(file, token) && file.exports.some((symbol) => tokenizeTaskText(symbol).includes(token))) {
       score += 3;
       reasons.push('symbol match');
     }
-    if (!isRedundantGraphqToken(file, token) && file.symbols.some((symbol) => tokenize(symbol).includes(token))) {
+    if (!isRedundantGraphqToken(file, token) && file.symbols.some((symbol) => tokenizeTaskText(symbol).includes(token))) {
       score += 2;
       reasons.push('symbol match');
     }
@@ -275,7 +276,7 @@ function scoreFile(file, taskTokens, risk, memory, scan, freshness) {
 }
 
 function shouldUseFreshnessBoost(taskTokens) {
-  return taskTokens.some((token) => BUG_TASK_WORDS.has(token) || ['review', 'recent', 'regression', 'changed'].includes(token));
+  return taskTokens.some((token) => isBugTaskToken(token) || ['review', 'recent', 'regression', 'changed'].includes(token));
 }
 
 function memoryBoostForFile(file, taskTokens, memory, scan) {
@@ -285,11 +286,11 @@ function memoryBoostForFile(file, taskTokens, memory, scan) {
   let boost = 0;
   const hotspot = memory.hotspots?.files?.[file.path];
   if (hotspot?.selectionCount >= 2) boost += 1;
-  if (hotspot?.bugFixSelectionCount >= 1 && taskTokens.some((token) => BUG_TASK_WORDS.has(token))) {
+  if (hotspot?.bugFixSelectionCount >= 1 && taskTokens.some(isBugTaskToken)) {
     boost += 1;
   }
 
-  if (taskTokens.some((token) => BUG_TASK_WORDS.has(token))) {
+  if (taskTokens.some(isBugTaskToken)) {
     for (const [keyword, pattern] of Object.entries(memory.recurringBugs?.patterns ?? {})) {
       if (!taskTokens.includes(keyword)) continue;
       if (pattern.files?.includes(file.path)) {
@@ -302,25 +303,12 @@ function memoryBoostForFile(file, taskTokens, memory, scan) {
   return Math.min(boost, 2);
 }
 
-const BUG_TASK_WORDS = new Set([
-  'bug',
-  'fix',
-  'broken',
-  'failing',
-  'failure',
-  'regression',
-  'crash',
-  'wrong',
-  'issue',
-  'defect'
-]);
-
 function matchesOnlyGenericGraphqPath(file, taskTokens, basenameTokenSet, filePathTokenSet) {
   if (!file.path.includes('/graphq/') && !file.path.startsWith('graphq/')) return false;
   const specificMatch = taskTokens.some((token) => token !== 'graphq' && (
     basenameTokenSet.has(token)
-    || file.exports.some((symbol) => tokenize(symbol).includes(token))
-    || file.symbols.some((symbol) => tokenize(symbol).includes(token))
+    || file.exports.some((symbol) => tokenizeTaskText(symbol).includes(token))
+    || file.symbols.some((symbol) => tokenizeTaskText(symbol).includes(token))
   ));
   return !specificMatch && filePathTokenSet.has('graphq') && !basenameTokenSet.has('graphq');
 }
@@ -479,8 +467,8 @@ function scoreTestForSource(source, test, importLookup) {
     reasons.push('directory proximity');
   }
 
-  const sourceTokens = new Set(tokenize(source.path).filter((token) => !['src', 'test', 'tests'].includes(token)));
-  const testTokens = new Set(tokenize(test.path).filter((token) => !['src', 'test', 'tests'].includes(token)));
+  const sourceTokens = new Set(tokenizeTaskText(source.path).filter((token) => !['src', 'test', 'tests'].includes(token)));
+  const testTokens = new Set(tokenizeTaskText(test.path).filter((token) => !['src', 'test', 'tests'].includes(token)));
   const sharedTokens = [...sourceTokens].filter((token) => testTokens.has(token));
   if (sharedTokens.length) {
     score += sharedTokens.length * 2;
@@ -518,23 +506,24 @@ function collectIndirectDependents(rootPath, directDependents, impact, maxDepth)
 }
 
 function computeDependencyDepth(rootPath, directDependents, impact, maxDepth) {
-  let deepest = directDependents.length ? 1 : 0;
+  if (!directDependents.length) return 0;
 
-  for (const dependent of directDependents) {
-    const queue = [{ filePath: dependent, depth: 1 }];
-    const visited = new Set();
+  let deepest = 1;
+  const visited = new Set([rootPath]);
+  // Seed the queue with all direct dependents at depth 1 and run a single BFS,
+  // tracking every visited path once per root so shared downstream dependents
+  // and cycles are not revisited.
+  const queue = directDependents.map((filePath) => ({ filePath, depth: 1 }));
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const current = queue[cursor];
+    if (visited.has(current.filePath)) continue;
+    visited.add(current.filePath);
+    deepest = Math.max(deepest, current.depth);
 
-    while (queue.length) {
-      const current = queue.shift();
-      if (!current || visited.has(current.filePath)) continue;
-      visited.add(current.filePath);
-      deepest = Math.max(deepest, current.depth);
-
-      if (current.depth >= maxDepth) continue;
-      for (const next of impact[current.filePath]?.directDependents ?? []) {
-        if (next === rootPath) continue;
-        queue.push({ filePath: next, depth: current.depth + 1 });
-      }
+    if (current.depth >= maxDepth) continue;
+    for (const next of impact[current.filePath]?.directDependents ?? []) {
+      if (next === rootPath || visited.has(next)) continue;
+      queue.push({ filePath: next, depth: current.depth + 1 });
     }
   }
 
@@ -565,23 +554,6 @@ function normalizeTask(task) {
   const trimmed = task.trim();
   const sentence = `${trimmed.slice(0, 1).toUpperCase()}${trimmed.slice(1)}`;
   return sentence.endsWith('.') ? sentence : `${sentence}.`;
-}
-
-function tokenize(value) {
-  let text = String(value);
-  if (!/\s/.test(text)) {
-    text = text.replace(/([a-z])([A-Z])/g, '$1 $2');
-  }
-  return text
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(Boolean)
-    .flatMap((token) => {
-      const variants = [token];
-      if (token.endsWith('ing') && token.length > 5) variants.push(token.slice(0, -3));
-      if (token.endsWith('s') && token.length > 3) variants.push(token.slice(0, -1));
-      return variants;
-    });
 }
 
 function addRisk(reasons, text, weight) {

@@ -310,13 +310,15 @@ async function writeText(graphqRoot, relativePath, content) {
   await fs.writeFile(safeGraphqPath(graphqRoot, relativePath), content, 'utf8');
 }
 
-async function ensureText(graphqRoot, relativePath, content) {
+export async function ensureText(graphqRoot, relativePath, content) {
   const absolutePath = safeGraphqPath(graphqRoot, relativePath);
   try {
-    await fs.stat(absolutePath);
+    // Atomic create-only: avoids the stat-then-write race where another process
+    // (or a prior GraphQ run) creates the file between our checks and overwrites
+    // user decisions/learnings. EEXIST means the file already exists; leave it.
+    await fs.writeFile(absolutePath, content, { encoding: 'utf8', flag: 'wx' });
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-    await fs.writeFile(absolutePath, content, 'utf8');
+    if (error.code !== 'EEXIST') throw error;
   }
 }
 
