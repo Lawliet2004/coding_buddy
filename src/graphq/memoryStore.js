@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isBugLikeTaskText, tokenizeTaskText } from './taskText.js';
+import { assertNoLinkedPathComponents } from '../pathSafety.js';
 
 export const MAP_VERSION = 'graphq-v3';
 export const MEMORY_SCHEMA_VERSION = 'graphq-memory-v1';
@@ -70,23 +71,116 @@ export async function readGraphqMemory(projectRoot) {
   const reportsRoot = path.join(projectRoot, '.graphq', 'reports');
   const degradedReasons = [];
 
+  await assertNoLinkedPathComponents(projectRoot, memoryRoot, '.graphq/memory');
+  await assertNoLinkedPathComponents(projectRoot, reportsRoot, '.graphq/reports');
+
+  for (const filename of ['hotspots.json', 'recurring-bugs.json', 'sessions.jsonl']) {
+    await assertNoLinkedPathComponents(projectRoot, path.join(memoryRoot, filename), `.graphq/memory/${filename}`);
+  }
+
   const [hotspotsResult, recurringResult, sessionsResult] = await Promise.all([
     readMemoryJsonSafe(path.join(memoryRoot, 'hotspots.json'), { generatedAt: null, files: {} }),
     readMemoryJsonSafe(path.join(memoryRoot, 'recurring-bugs.json'), { generatedAt: null, patterns: {} }),
     readSessionsSafe(path.join(memoryRoot, 'sessions.jsonl'))
   ]);
 
-  if (hotspotsResult.degraded) degradedReasons.push(`hotspots: ${hotspotsResult.reason}`);
-  if (recurringResult.degraded) degradedReasons.push(`recurring-bugs: ${recurringResult.reason}`);
+  const hotspots = normalizeHotspots(hotspotsResult.data);
+  const recurringBugs = normalizeRecurringBugs(recurringResult.data);
+
+  if (hotspotsResult.degraded || hotspots.degraded) degradedReasons.push(`hotspots: ${hotspotsResult.reason ?? hotspots.reason}`);
+  if (recurringResult.degraded || recurringBugs.degraded) degradedReasons.push(`recurring-bugs: ${recurringResult.reason ?? recurringBugs.reason}`);
   if (sessionsResult.degraded) degradedReasons.push(`sessions: ${sessionsResult.reason}`);
 
   return {
     schemaVersion: MEMORY_SCHEMA_VERSION,
-    hotspots: hotspotsResult.data ?? { generatedAt: null, files: {} },
-    recurringBugs: recurringResult.data ?? { generatedAt: null, patterns: {} },
+    hotspots: hotspots.data,
+    recurringBugs: recurringBugs.data,
     sessions: sessionsResult.data ?? [],
     degraded: degradedReasons.length > 0,
     degradedReasons
+  };
+}
+
+function normalizeHotspots(value) {
+  const fallback = { generatedAt: null, files: {} };
+  if (!isRecord(value) || !isRecord(value.files)) {
+    return { data: fallback, degraded: true, reason: 'invalid schema' };
+  }
+
+  let degraded = !isTimestampOrNull(value.generatedAt);
+  const entries = [];
+  for (const [filePath, entry] of Object.entries(value.files)) {
+    if (!isSafeRepoPath(filePath) || !isRecord(entry)) {
+      degraded = true;
+      continue;
+    }
+    const counters = ['selectionCount', 'highRiskSelectionCount', 'bugFixSelectionCount'];
+    if (counters.some((key) => entry[key] !== undefined && !isCounter(entry[key])) || !isCounter(entry.selectionCount)) {
+      degraded = true;
+      continue;
+    }
+    if (!isTimestampOrNull(entry.lastSelectedAt) || !isTaskOrUndefined(entry.lastTask) || !isRiskOrUndefined(entry.risk)) {
+      degraded = true;
+      continue;
+    }
+    entries.push([filePath, {
+      selectionCount: entry.selectionCount,
+      highRiskSelectionCount: entry.highRiskSelectionCount ?? 0,
+      bugFixSelectionCount: entry.bugFixSelectionCount ?? 0,
+      ...(entry.lastSelectedAt ? { lastSelectedAt: entry.lastSelectedAt } : {}),
+      ...(entry.lastTask !== undefined ? { lastTask: compactTask(entry.lastTask) } : {}),
+      ...(entry.risk !== undefined ? { risk: entry.risk } : {})
+    }]);
+  }
+
+  entries.sort((a, b) => b[1].selectionCount - a[1].selectionCount || a[0].localeCompare(b[0]));
+  if (entries.length > MAX_HOTSPOT_FILES) degraded = true;
+  return {
+    data: {
+      generatedAt: isTimestampOrNull(value.generatedAt) ? value.generatedAt ?? null : null,
+      files: Object.fromEntries(entries.slice(0, MAX_HOTSPOT_FILES))
+    },
+    degraded,
+    reason: degraded ? 'invalid or out-of-bounds entries' : null
+  };
+}
+
+function normalizeRecurringBugs(value) {
+  const fallback = { generatedAt: null, patterns: {} };
+  if (!isRecord(value) || !isRecord(value.patterns)) {
+    return { data: fallback, degraded: true, reason: 'invalid schema' };
+  }
+
+  let degraded = !isTimestampOrNull(value.generatedAt);
+  const entries = [];
+  for (const [keyword, entry] of Object.entries(value.patterns)) {
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(keyword) || !isRecord(entry) || !isCounter(entry.count)) {
+      degraded = true;
+      continue;
+    }
+    if (!Array.isArray(entry.files) || !entry.files.every(isSafeRepoPath)
+      || !isTimestampOrNull(entry.lastSeenAt) || !isTaskOrUndefined(entry.lastTask)) {
+      degraded = true;
+      continue;
+    }
+    if (entry.files.length > MAX_PATTERN_FILES) degraded = true;
+    entries.push([keyword, {
+      count: entry.count,
+      files: unique(entry.files).sort().slice(0, MAX_PATTERN_FILES),
+      ...(entry.lastSeenAt ? { lastSeenAt: entry.lastSeenAt } : {}),
+      ...(entry.lastTask !== undefined ? { lastTask: compactTask(entry.lastTask) } : {})
+    }]);
+  }
+
+  entries.sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
+  if (entries.length > MAX_RECURRING_PATTERNS) degraded = true;
+  return {
+    data: {
+      generatedAt: isTimestampOrNull(value.generatedAt) ? value.generatedAt ?? null : null,
+      patterns: Object.fromEntries(entries.slice(0, MAX_RECURRING_PATTERNS))
+    },
+    degraded,
+    reason: degraded ? 'invalid or out-of-bounds entries' : null
   };
 }
 
@@ -94,7 +188,9 @@ export async function updateGraphqMemory(projectRoot, { scan, taskPlan, freshnes
   const generatedAt = scan.generatedAt;
   const graphqRoot = path.join(projectRoot, '.graphq');
   const memoryRoot = path.join(graphqRoot, 'memory');
+  await assertNoLinkedPathComponents(projectRoot, memoryRoot, '.graphq/memory');
   await fs.mkdir(memoryRoot, { recursive: true });
+  await assertNoLinkedPathComponents(projectRoot, memoryRoot, '.graphq/memory');
 
   const existing = await readGraphqMemory(projectRoot);
   const hotspots = boundHotspots(updateHotspots(existing.hotspots, taskPlan, taskPlan.riskMap, generatedAt));
@@ -250,7 +346,7 @@ function renderMemorySuggestions(hotspots, recurringBugs, taskPlan) {
 
   if (topHotspots.length) {
     for (const [filePath, entry] of topHotspots) {
-      lines.push(`- Candidate learning: GraphQ ${compactTask(entry.lastTask ?? taskPlan.task).toLowerCase()} tasks often involve ${filePath}.`);
+      lines.push(`- Candidate learning: GraphQ ${compactTask(entry.lastTask ?? taskPlan.task).toLowerCase()} tasks often involve ${JSON.stringify(filePath)}.`);
     }
   } else {
     lines.push('- Candidate learning: No durable hotspot files yet.');
@@ -262,8 +358,8 @@ function renderMemorySuggestions(hotspots, recurringBugs, taskPlan) {
 
   if (topPatterns.length) {
     for (const [keyword, pattern] of topPatterns) {
-      const files = pattern.files?.length ? pattern.files.join(', ') : 'related files';
-      lines.push(`- Candidate learning: Recurring ${keyword} bug tasks often touch ${files}.`);
+      const files = pattern.files?.length ? pattern.files.map((filePath) => JSON.stringify(filePath)).join(', ') : 'related files';
+      lines.push(`- Candidate learning: Recurring ${JSON.stringify(keyword)} bug tasks often touch ${files}.`);
     }
   }
 
@@ -278,8 +374,10 @@ function renderMemorySuggestions(hotspots, recurringBugs, taskPlan) {
 
 async function appendSession(memoryRoot, session) {
   const safeSession = sanitizeSession(session);
+  const filePath = safeMemoryPath(memoryRoot, 'sessions.jsonl');
+  await assertMemoryPathSafe(memoryRoot, filePath, 'sessions.jsonl');
   await fs.appendFile(
-    safeMemoryPath(memoryRoot, 'sessions.jsonl'),
+    filePath,
     `${JSON.stringify(safeSession)}\n`,
     'utf8'
   );
@@ -287,10 +385,12 @@ async function appendSession(memoryRoot, session) {
 
 async function compactSessions(memoryRoot) {
   const filePath = safeMemoryPath(memoryRoot, 'sessions.jsonl');
+  await assertMemoryPathSafe(memoryRoot, filePath, 'sessions.jsonl');
   const { data: sessions, degraded } = await readSessionsSafe(filePath);
-  if (degraded || sessions.length <= MAX_SESSIONS) return;
+  if (!degraded && sessions.length <= MAX_SESSIONS) return;
 
   const trimmed = sessions.slice(-MAX_SESSIONS);
+  await assertMemoryPathSafe(memoryRoot, filePath, 'sessions.jsonl');
   await fs.writeFile(
     filePath,
     `${trimmed.map((session) => JSON.stringify(session)).join('\n')}\n`,
@@ -305,12 +405,19 @@ async function readSessionsSafe(filePath) {
     let degraded = false;
     for (const line of text.split(/\r?\n/).filter(Boolean)) {
       try {
-        sessions.push(JSON.parse(line));
+        const session = normalizeSession(JSON.parse(line));
+        if (session) sessions.push(session);
+        else degraded = true;
       } catch {
         degraded = true;
       }
     }
-    return { data: sessions, degraded, reason: degraded ? 'corrupt session line' : null };
+    if (sessions.length > MAX_SESSIONS) degraded = true;
+    return {
+      data: sessions.slice(-MAX_SESSIONS),
+      degraded,
+      reason: degraded ? 'invalid, corrupt, or out-of-bounds session line' : null
+    };
   } catch (error) {
     if (error.code === 'ENOENT') return { data: [], degraded: false, reason: null };
     return { data: [], degraded: true, reason: 'read error' };
@@ -318,8 +425,10 @@ async function readSessionsSafe(filePath) {
 }
 
 async function writeMemoryJson(memoryRoot, relativePath, value) {
+  const filePath = safeMemoryPath(memoryRoot, relativePath);
+  await assertMemoryPathSafe(memoryRoot, filePath, relativePath);
   await fs.writeFile(
-    safeMemoryPath(memoryRoot, relativePath),
+    filePath,
     `${JSON.stringify(value, null, 2)}\n`,
     'utf8'
   );
@@ -328,8 +437,20 @@ async function writeMemoryJson(memoryRoot, relativePath, value) {
 async function writeMemoryText(graphqRoot, relativePath, content) {
   const normalized = relativePath.replace(/^reports\//, '');
   const reportsRoot = path.join(graphqRoot, 'reports');
+  await assertNoLinkedPathComponents(path.dirname(graphqRoot), reportsRoot, '.graphq/reports');
   await fs.mkdir(reportsRoot, { recursive: true });
-  await fs.writeFile(safeMemoryPath(reportsRoot, normalized), content, 'utf8');
+  const filePath = safeMemoryPath(reportsRoot, normalized);
+  await assertNoLinkedPathComponents(path.dirname(graphqRoot), filePath, `.graphq/reports/${normalized}`);
+  await fs.writeFile(filePath, content, 'utf8');
+}
+
+async function assertMemoryPathSafe(memoryRoot, filePath, relativePath) {
+  const graphqRoot = path.dirname(memoryRoot);
+  await assertNoLinkedPathComponents(
+    path.dirname(graphqRoot),
+    filePath,
+    `.graphq/memory/${relativePath.replaceAll('\\', '/')}`
+  );
 }
 
 function sanitizeSession(session) {
@@ -339,6 +460,48 @@ function sanitizeSession(session) {
     files: (session.files ?? []).slice(0, 12),
     tests: (session.tests ?? []).slice(0, 8)
   };
+}
+
+function normalizeSession(value) {
+  if (!isRecord(value)) return null;
+  if (!isTaskOrUndefined(value.task) || !isTimestampOrNull(value.time) || !isRiskOrUndefined(value.risk)) return null;
+  for (const key of ['files', 'tests']) {
+    if (value[key] !== undefined && (!Array.isArray(value[key]) || !value[key].every(isSafeRepoPath))) return null;
+  }
+  for (const key of ['filesScanned', 'filesSkipped']) {
+    if (value[key] !== undefined && !isCounter(value[key])) return null;
+  }
+  if (value.estimatedTokensAvoided !== undefined
+    && (!Number.isFinite(value.estimatedTokensAvoided) || value.estimatedTokensAvoided < 0)) return null;
+  return sanitizeSession({ ...value });
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isCounter(value) {
+  return Number.isFinite(value) && Number.isInteger(value) && value >= 0;
+}
+
+function isTimestampOrNull(value) {
+  return value === undefined || value === null
+    || (typeof value === 'string' && value.length <= 64 && Number.isFinite(Date.parse(value)));
+}
+
+function isTaskOrUndefined(value) {
+  return value === undefined || (typeof value === 'string' && !/[\r\n\u0000-\u001f\u007f]/.test(value));
+}
+
+function isRiskOrUndefined(value) {
+  return value === undefined || ['low', 'medium', 'high', 'Low', 'Medium', 'High'].includes(value);
+}
+
+function isSafeRepoPath(value) {
+  if (typeof value !== 'string' || !value || value.length > 1024 || path.isAbsolute(value)) return false;
+  if (/[\r\n\u0000-\u001f\u007f]/.test(value)) return false;
+  const normalized = value.replaceAll('\\', '/');
+  return !normalized.split('/').includes('..');
 }
 
 function sortPatterns(patterns) {

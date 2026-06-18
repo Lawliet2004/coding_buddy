@@ -116,15 +116,15 @@ function parseInstallArgs(args, cwd, env) {
     if (arg === '--target' || arg === '-t') {
       options.targets = addTargets(options.targets, splitList(readValue(args, ++index, arg)));
     } else if (arg.startsWith('--target=')) {
-      options.targets = addTargets(options.targets, splitList(arg.slice('--target='.length)));
+      options.targets = addTargets(options.targets, splitList(readInlineValue(arg, '--target')));
     } else if (arg === '--dir') {
       options.projectRoot = resolveCliPath(readValue(args, ++index, arg), cwd);
     } else if (arg.startsWith('--dir=')) {
-      options.projectRoot = resolveCliPath(arg.slice('--dir='.length), cwd);
+      options.projectRoot = resolveCliPath(readInlineValue(arg, '--dir'), cwd);
     } else if (arg === '--scope') {
       options.scope = readValue(args, ++index, arg);
     } else if (arg.startsWith('--scope=')) {
-      options.scope = arg.slice('--scope='.length);
+      options.scope = readInlineValue(arg, '--scope');
     } else if (arg === '--yes' || arg === '-y') {
       options.yes = true;
     } else if (arg === '--force') {
@@ -150,6 +150,12 @@ function readValue(args, index, flag) {
   if (!value || value.startsWith('-')) {
     throw new Error(`Missing value for ${flag}`);
   }
+  return value;
+}
+
+function readInlineValue(arg, flag) {
+  const value = arg.slice(`${flag}=`.length);
+  if (!value) throw new Error(`Missing value for ${flag}`);
   return value;
 }
 

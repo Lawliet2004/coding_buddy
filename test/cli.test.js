@@ -346,3 +346,17 @@ function captureStream() {
   stream.text = () => value;
   return stream;
 }
+
+test('CLI rejects empty inline install option values without writing', async () => {
+  for (const flag of ['--target=', '--dir=', '--scope=']) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tokenmaxxing-ai-empty-inline-'));
+    await assert.rejects(runCli(['install', '--yes', flag], {
+      cwd: root,
+      env: { HOME: root, USERPROFILE: root },
+      stdin: Readable.from([]),
+      stdout: captureStream(),
+      stderr: captureStream()
+    }), /Missing value for --(?:target|dir|scope)/);
+    await assert.rejects(fs.stat(path.join(root, '.agents')), /ENOENT/);
+  }
+});

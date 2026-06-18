@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { adapters, targetAliases, targetNames } from './adapters.js';
 import { GENERATED_MARKER } from './constants.js';
+import { assertNoLinkedPathComponents } from './pathSafety.js';
 
 // Targets that support --scope user. Cursor and commandcode write only project files.
 export const USER_TARGETS = ['codex', 'claude-code', 'github-copilot', 'opencode', 'antigravity', 'kiro'];
@@ -47,13 +48,15 @@ export async function install(options) {
   for (const file of files) {
     const baseDir = file.root === 'home' ? homeDir : projectRoot;
     const absolutePath = safeResolve(baseDir, file.path);
+    await assertNoLinkedPathComponents(baseDir, absolutePath, file.path);
     const next = await planFile(absolutePath, file, options.force);
     plan.push({
       action: next.action,
       write: next.write,
       content: next.content,
       absolutePath,
-      relativePath: path.relative(baseDir, absolutePath) || path.basename(absolutePath)
+      relativePath: path.relative(baseDir, absolutePath) || path.basename(absolutePath),
+      root: file.root
     });
   }
 
@@ -67,7 +70,10 @@ export async function install(options) {
   const results = [];
   for (const p of plan) {
     if (!options.dryRun && p.write) {
+      const baseDir = p.root === 'home' ? homeDir : projectRoot;
+      await assertNoLinkedPathComponents(baseDir, p.absolutePath, p.relativePath);
       await fs.mkdir(path.dirname(p.absolutePath), { recursive: true });
+      await assertNoLinkedPathComponents(baseDir, p.absolutePath, p.relativePath);
       await fs.writeFile(p.absolutePath, p.content, 'utf8');
     }
     results.push({ action: p.action, path: p.relativePath });
@@ -85,6 +91,7 @@ export async function verifyInstall(options) {
   for (const file of files) {
     const baseDir = file.root === 'home' ? homeDir : projectRoot;
     const absolutePath = safeResolve(baseDir, file.path);
+    await assertNoLinkedPathComponents(baseDir, absolutePath, file.path);
     const existing = await readOptional(absolutePath);
     const relativePath = path.relative(baseDir, absolutePath) || path.basename(absolutePath);
 

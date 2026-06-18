@@ -620,7 +620,7 @@ async function readProjectMetadata(root) {
     name: packageJson?.name ?? path.basename(root),
     type: inferProjectType(packageJson),
     packageManager: await detectPackageManager(root),
-    scripts: packageJson?.scripts ?? {},
+    scripts: Object.fromEntries(Object.keys(packageJson?.scripts ?? {}).sort().map((name) => [name, true])),
     dependencies: Object.keys(packageJson?.dependencies ?? {}).sort(),
     devDependencies: Object.keys(packageJson?.devDependencies ?? {}).sort(),
     readmeTitle: readme?.match(/^#\s+(.+)$/m)?.[1] ?? null

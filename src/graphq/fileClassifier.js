@@ -141,9 +141,11 @@ export function compileGitignore(raw) {
   return raw
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith('#'))
-    .map((pattern) => {
-      if (pattern.startsWith('!')) {
+    .filter((line) => line && (!line.startsWith('#') || line.startsWith('\\#')))
+    .map((line) => {
+      const escapedLeadingMarker = line.startsWith('\\#') || line.startsWith('\\!');
+      const pattern = escapedLeadingMarker ? line.slice(1) : line;
+      if (!escapedLeadingMarker && pattern.startsWith('!')) {
         return { pattern: pattern.slice(1), negate: true };
       }
       return { pattern, negate: false };
@@ -196,27 +198,46 @@ export function isGitignoreNegated(relativePath, patterns) {
 }
 
 function gitignorePatternMatches(pattern, repoPath, segments, name) {
+  const anchored = pattern.startsWith('/');
   let normalized = pattern.replaceAll('\\', '/').replace(/^\/+/, '');
   if (!normalized) return false;
 
-  if (normalized.endsWith('/')) {
-    normalized = normalized.slice(0, -1);
-    return repoPath === normalized || repoPath.startsWith(`${normalized}/`) || segments.includes(normalized);
-  }
+  const directoryOnly = normalized.endsWith('/');
+  normalized = normalized.replace(/\/+$/, '');
+  const source = globPatternSource(normalized);
+  const prefix = anchored ? '^' : '(?:^|/)';
+  const suffix = directoryOnly ? '(?:/.*)?$' : '$';
+  return new RegExp(`${prefix}${source}${suffix}`).test(repoPath);
+}
 
-  if (normalized.includes('*')) {
-    const source = normalized
-      .split('*')
-      .map(escapeRegExp)
-      .join('[^/]*');
-    return new RegExp(`(^|/)${source}$`).test(repoPath);
+function globPatternSource(pattern) {
+  let source = '';
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    if (char === '*' && pattern[index + 1] === '*') {
+      index += 1;
+      if (pattern[index + 1] === '/') {
+        index += 1;
+        source += '(?:[^/]+/)*';
+      } else if (source.endsWith('/')) {
+        source = source.slice(0, -1);
+        source += '(?:/.*)?';
+      } else {
+        source += '.*';
+      }
+      continue;
+    }
+    if (char === '*') {
+      source += '[^/]*';
+      continue;
+    }
+    if (char === '?') {
+      source += '[^/]';
+      continue;
+    }
+    source += escapeRegExp(char);
   }
-
-  if (normalized.includes('/')) {
-    return repoPath === normalized || repoPath.startsWith(`${normalized}/`);
-  }
-
-  return name === normalized || segments.includes(normalized);
+  return source;
 }
 
 function isSecretPath(lowerPath, name, ext) {

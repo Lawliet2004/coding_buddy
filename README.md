@@ -131,17 +131,17 @@ See [GitHub launch checklist](docs/github-launch-checklist.md) for the release a
 
 Use this before edits when the repo is unfamiliar, the task is risky, or the agent needs the smallest safe context.
 
-GraphQ is local-first: it does not call the network, send code anywhere, or store secrets. It has zero runtime dependencies and writes generated output only inside `.graphq/` (gitignored). Read `.graphq/agent/context.md` first; open deeper maps only when needed. GraphQ does not replace reading source files. Refresh GraphQ for risky or stale tasks. Memory suggestions under `.graphq/reports/memory-suggestions.md` are candidates only and never auto-edit `.tokenmaxxing.md`.
+GraphQ is local-first: it does not call the network or send code anywhere. It skips common secret files and does not intentionally copy source snippets or detected secret values, but users must still treat generated metadata as sensitive local output. It has zero runtime dependencies and writes generated output only inside `.graphq/` (gitignored). Read `.graphq/agent/context.md` first; open deeper maps only when needed. GraphQ does not replace reading source files. Refresh GraphQ for risky or stale tasks. Memory suggestions under `.graphq/reports/memory-suggestions.md` are candidates only and never auto-edit `.tokenmaxxing.md`.
 
 The local CLI:
 
 1. Scans useful source, test, config, and docs files with Node built-ins only.
-2. Ignores secrets, real `.env` files, binaries, dependency folders, generated output, lock files, and large files (`.env.example` is allowed).
+2. Skips common secret paths, real `.env` files, binaries, dependency folders, generated output, lock files, and large files (`.env.example` is allowed). Secret detection is intentionally conservative, not perfect.
 3. Reads `.tokenmaxxing.md`, `README.md`, package metadata, filenames, lightweight symbols, imports, routes, and test filenames.
 4. Generates `.graphq/agent/context.md` as the first file an agent should read.
 5. Writes compact metadata maps: `files.json`, `graph.min.json`, `symbols.json`, `routes.json`, `dependencies.json`, `impact.json`, `tests.json`, and `risk.json`.
 6. Avoids dumping full source code into agent files or compact maps.
-7. Keeps bounded adaptive memory under `.graphq/memory/` (metadata only).
+7. Keeps bounded adaptive memory under `.graphq/memory/`; treat it and other generated metadata as sensitive local output.
 
 Common commands:
 

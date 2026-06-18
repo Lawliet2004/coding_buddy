@@ -524,3 +524,50 @@ test('install plan reports home-rooted files relative to the home directory', as
   assert(relative.some((p) => p.startsWith('.agents/')),
     'expected at least one home-rooted file to be shown as a home-relative path');
 });
+
+test('installer rejects linked parent directories during dry runs and writes', async (t) => {
+  const { root, home } = await makeTempProject();
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'tokenmaxxing-ai-outside-'));
+  try {
+    await fs.symlink(outside, path.join(root, '.agents'), process.platform === 'win32' ? 'junction' : 'dir');
+  } catch (error) {
+    if (['EPERM', 'EACCES', 'ENOSYS'].includes(error.code)) return t.skip(`links unavailable: ${error.code}`);
+    throw error;
+  }
+
+  for (const dryRun of [true, false]) {
+    await assert.rejects(install({
+      projectRoot: root,
+      homeDir: home,
+      targets: normalizeTargets(['codex']),
+      scope: 'project',
+      dryRun,
+      force: false
+    }), /Unsafe linked path component.*\.agents/);
+  }
+  await assert.rejects(fs.stat(path.join(outside, 'skills/graphq/SKILL.md')), /ENOENT/);
+});
+
+test('installer rejects a linked destination file when file links are supported', async (t) => {
+  const { root, home } = await makeTempProject();
+  const commands = path.join(root, '.opencode/commands');
+  const outside = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'tokenmaxxing-ai-file-target-')), 'target.md');
+  await fs.mkdir(commands, { recursive: true });
+  await fs.writeFile(outside, 'outside\n', 'utf8');
+  try {
+    await fs.symlink(outside, path.join(commands, 'simplify.md'), 'file');
+  } catch (error) {
+    if (['EPERM', 'EACCES', 'ENOSYS'].includes(error.code)) return t.skip(`file links unavailable: ${error.code}`);
+    throw error;
+  }
+
+  await assert.rejects(install({
+    projectRoot: root,
+    homeDir: home,
+    targets: normalizeTargets(['opencode']),
+    scope: 'project',
+    dryRun: true,
+    force: true
+  }), /Unsafe linked path component.*simplify\.md/);
+  assert.equal(await fs.readFile(outside, 'utf8'), 'outside\n');
+});

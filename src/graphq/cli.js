@@ -10,6 +10,7 @@ import {
 import { readGraphqMemory, summarizeMemoryForCli } from './memoryStore.js';
 import { scanProject } from './scanner.js';
 import { buildTaskPlan } from './taskRouter.js';
+import { assertNoLinkedPathComponents } from '../pathSafety.js';
 
 const HELP = `graphq
 
@@ -54,14 +55,17 @@ export async function runGraphq(argv, io = {}) {
     return 0;
   }
 
-  if (parsed.command === 'clean') {
-    await fs.rm(path.join(parsed.projectRoot, '.graphq'), { recursive: true, force: true });
-    const message = 'GraphQ cache removed: .graphq\n';
-    stdout.write(parsed.json ? formatJsonOutput({ ok: true, action: 'clean', message: message.trim() }) : message);
-    return 0;
-  }
-
   try {
+    const graphqRoot = path.join(parsed.projectRoot, '.graphq');
+    if (parsed.command === 'clean') {
+      await removeGraphqRoot(graphqRoot);
+      const message = 'GraphQ cache removed: .graphq\n';
+      stdout.write(parsed.json ? formatJsonOutput({ ok: true, action: 'clean', message: message.trim() }) : message);
+      return 0;
+    }
+
+    await assertNoLinkedPathComponents(parsed.projectRoot, graphqRoot, '.graphq');
+
     if (parsed.command === 'status') {
       return await status(parsed.projectRoot, stdout, parsed.json);
     }
@@ -155,6 +159,20 @@ export async function runGraphq(argv, io = {}) {
   }
 }
 
+async function removeGraphqRoot(graphqRoot) {
+  try {
+    const stats = await fs.lstat(graphqRoot);
+    if (stats.isSymbolicLink()) {
+      await fs.unlink(graphqRoot);
+      return;
+    }
+  } catch (error) {
+    if (error?.code === 'ENOENT') return;
+    throw error;
+  }
+  await fs.rm(graphqRoot, { recursive: true, force: true });
+}
+
 export function parseArgs(argv, cwd) {
   const args = [...argv];
   const options = {
@@ -188,7 +206,7 @@ export function parseArgs(argv, cwd) {
       continue;
     }
     if (arg.startsWith('--dir=')) {
-      options.projectRoot = path.resolve(cwd, arg.slice('--dir='.length));
+      options.projectRoot = path.resolve(cwd, readInlineValue(arg, '--dir'));
       continue;
     }
     if (arg === '--max-file-bytes') {
@@ -196,7 +214,7 @@ export function parseArgs(argv, cwd) {
       continue;
     }
     if (arg.startsWith('--max-file-bytes=')) {
-      options.maxFileBytes = parsePositiveInteger(arg.slice('--max-file-bytes='.length), '--max-file-bytes');
+      options.maxFileBytes = parsePositiveInteger(readInlineValue(arg, '--max-file-bytes'), '--max-file-bytes');
       continue;
     }
     positional.push(arg);
@@ -326,6 +344,12 @@ function normalizeCommand(value) {
 function readValue(args, index, flag) {
   const value = args[index];
   if (!value || looksLikeFlagArg(value)) throw new Error(`Missing value for ${flag}`);
+  return value;
+}
+
+function readInlineValue(arg, flag) {
+  const value = arg.slice(`${flag}=`.length);
+  if (!value) throw new Error(`Missing value for ${flag}`);
   return value;
 }
 
